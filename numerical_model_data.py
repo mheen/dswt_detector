@@ -6,11 +6,24 @@ from tools.files import get_files_in_dir
 from tools.roms import get_z, find_eta_xi_covering_lon_lat_box, convert_roms_u_v_to_u_east_v_north
 from tools.roms import get_eta_xi_along_transect, get_distance_along_transect
 
-def load_roms_data(input_dir:str, grid_file=None) -> xr.Dataset:
+def select_input_files(input_dir:str, file_contains=None,
+                       remove_gridfile=True, filetype='nc') -> list[str]:
+    all_files = get_files_in_dir(input_dir, filetype)
+    if file_contains is not None:
+        files = [f for f in all_files if file_contains in f]
+    else:
+        files = all_files
+        
+    if remove_gridfile is True:
+        grid_files = [f for f in files if 'grid' in f]
+        for f in grid_files:
+            files.remove(f)
+        
+    return files
+
+def load_roms_data(input_dir:str, grid_file=None, files_contain=None) -> xr.Dataset:
     
-    paths = get_files_in_dir(input_dir, 'nc')
-    if grid_file is not None:
-        paths.remove(grid_file)
+    paths = select_input_files(input_dir, file_contains=files_contain)
     roms_ds = xr.open_mfdataset(paths, data_vars='minimal')
     
     # read grid variables if in separate file
@@ -75,7 +88,9 @@ def select_roms_transect(roms_ds:xr.Dataset,
     
     return transect_ds
 
-roms_ds = load_roms_data('input/', grid_file='input/cwa_grid.nc')
-transect_ds = select_roms_transect(roms_ds, 115.7, -31.76, 115.26, -31.95)
+files = select_input_files('tests/data/', file_contains='cwa', remove_gridfile=False)
+files = select_input_files('tests/data/', file_contains='cwa', remove_gridfile=True)
+# roms_ds = load_roms_data('input/', grid_file='input/cwa_grid.nc')
+# transect_ds = select_roms_transect(roms_ds, 115.7, -31.76, 115.26, -31.95)
 
-transect_ds.temp.sel(ocean_time='2017-06-13 03:00').plot(x='distance', y='z_rho')
+# transect_ds.temp.sel(ocean_time='2017-06-13 03:00').plot(x='distance', y='z_rho')
