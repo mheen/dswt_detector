@@ -3,8 +3,10 @@ import numpy as np
 from datetime import datetime
 import os
 from tools.files import get_files_in_dir
+from tools import log
 from tools.roms import get_z, find_eta_xi_covering_lon_lat_box, convert_roms_u_v_to_u_east_v_north
 from tools.roms import get_eta_xi_along_transect, get_distance_along_transect
+from tools.seawater_density import calculate_density
 
 def select_input_files(input_dir:str, file_contains=None,
                        remove_gridfile=True, filetype='nc') -> list[str]:
@@ -40,18 +42,33 @@ def load_roms_data(input_dir:str, grid_file=None, files_contain=None) -> xr.Data
             roms_ds['Vtransform'] = rg.Vtransform
         if 'Cs_r' not in roms_ds.variables:
             roms_ds['Cs_r'] = rg.Cs_r
+        if 'Cs_w' not in roms_ds.variables:
+            roms_ds['Cs_w'] = rg.Cs_w
         if 'hc' not in roms_ds.variables:
             roms_ds['hc'] = rg.hc
+        if 'mask_rho' not in roms_ds.variables:
+            roms_ds['mask_rho'] = rg.mask_rho
     
-    # add layer depths z_rho    
+    # add layer depths z_rho and z_w
     z_rho = get_z(roms_ds.Vtransform.values, roms_ds.s_rho.values, roms_ds.h.values, roms_ds.Cs_r.values, roms_ds.hc.values)
     roms_ds.coords['z_rho'] = (['s_rho', 'eta_rho', 'xi_rho'], z_rho)
+    
+    z_w = get_z(roms_ds.Vtransform.values, roms_ds.s_w.values, roms_ds.h.values, roms_ds.Cs_w.values, roms_ds.hc.values)
+    roms_ds.coords['z_w'] = (['s_w', 'eta_rho', 'xi_rho'], z_w)
     
     # convert u and v to u_east and v_north
     if 'u_east' not in roms_ds.variables:
         u_east, v_north = convert_roms_u_v_to_u_east_v_north(roms_ds.u.values, roms_ds.v.values, roms_ds.angle.values)
         roms_ds['u_east'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], u_east)
         roms_ds['v_north'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], v_north)
+
+    # calculate seawater density if temperature and salinity available
+    if 'salt' in roms_ds.variables and 'temp' in roms_ds.variables:
+        density = calculate_density(roms_ds.salt.values, roms_ds.temp.values, -roms_ds.z_rho.values)
+        roms_ds['density'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], density)
+    else:
+        missing_variable = [v for v in ['salt', 'temp'] if v not in roms_ds.variables]
+        log.info(f'Cannot calculate seawater density, missing ROMS variable: {missing_variable}')
 
     return roms_ds
 
@@ -87,10 +104,3 @@ def select_roms_transect(roms_ds:xr.Dataset,
     transect_ds.coords['distance'] = distance
     
     return transect_ds
-
-files = select_input_files('tests/data/', file_contains='cwa', remove_gridfile=False)
-files = select_input_files('tests/data/', file_contains='cwa', remove_gridfile=True)
-# roms_ds = load_roms_data('input/', grid_file='input/cwa_grid.nc')
-# transect_ds = select_roms_transect(roms_ds, 115.7, -31.76, 115.26, -31.95)
-
-# transect_ds.temp.sel(ocean_time='2017-06-13 03:00').plot(x='distance', y='z_rho')
