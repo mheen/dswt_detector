@@ -5,6 +5,7 @@ sys.path.insert(1, parent)
 import cartopy.crs as ccrs
 import cartopy.mpl.ticker as cticker
 from cartopy.io import shapereader
+import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -47,15 +48,8 @@ def plot_basic_map(ax:plt.axes, lon_range=None, lat_range=None,
     if parallels is None:
         parallels = np.arange(-46.0, -24.0, 4.0)
         
-    shp = shapereader.Reader('input/GSHHS_coastline_GSR.shp')
-    for _, geometry in zip(shp.records(), shp.geometries()):
-        ax.add_geometries([geometry], ccrs.PlateCarree(), facecolor='#989898',
-                           edgecolor='black', zorder=zorder_c)
-        
-    # shp2 = shapereader.Reader('input/GI.shp')
-    # for _, geometry in zip(shp2.records(), shp2.geometries()):
-    #     ax.add_geometries([geometry], ccrs.PlateCarree(), facecolor='#989898',
-    #                       edgecolor='black', zorder=100)
+    ax.add_feature(cfeature.LAND)
+    ax.add_feature(cfeature.COASTLINE)
     
     ax = add_grid(ax, meridians, parallels, xmarkers, ymarkers, draw_grid)
 
