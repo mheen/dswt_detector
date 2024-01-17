@@ -104,7 +104,7 @@ def calculate_perpendicular_angles_to_shelf_points(lon_ps:np.ndarray, lat_ps:np.
     return np.deg2rad(perpendicular_angle)
 
 def find_closest_land_point_at_angle(lon_p:float, lat_p:float, angle:float,
-                                     land_polygon:shapely.Polygon, dist=10000) -> tuple[float]:
+                                     land_polygon:shapely.Polygon, dist=10000.) -> tuple[float]:
     '''Determines the closest point on land at a specific angle from an ocean point.
         
     Input
@@ -123,43 +123,34 @@ def find_closest_land_point_at_angle(lon_p:float, lat_p:float, angle:float,
     
     line = shapely.LineString([(lon_p, lat_p), (lon_p + dist * np.sin(angle), lat_p + dist * np.cos(angle))])
     
-    lon_land = lon_p
-    lat_land = lat_p
-    i = 0
-    while lon_land == lon_p and lat_land == lat_p:
-        dist = 2*dist # increase length of line if no land point found
-        difference = line.difference(land_polygon) # splits line into two with polygon removing lines
+    difference = line.difference(land_polygon) # splits line into two with polygon removing lines
 
-        if difference.geom_type == 'MultiLineString': # first line is from point to land polygon
-            lon_land = difference.geoms[0].coords.xy[0][-1]
-            lat_land = difference.geoms[0].coords.xy[1][-1]
-        elif difference.geom_type == 'LineString': # if line is short, there is only one line
-            lon_land = difference.coords.xy[0][-1]
-            lat_land = difference.coords.xy[1][-1]
-        else:
-            raise ValueError(f'Difference did not return a MultiLineString or a LineString as expected: {difference.geom_type}')
+    if difference.geom_type == 'MultiLineString': # first line is from point to land polygon
+        lon_land = difference.geoms[0].coords.xy[0][-1]
+        lat_land = difference.geoms[0].coords.xy[1][-1]
+    elif difference.geom_type == 'LineString': # if line is short, there is only one line
+        lon_land = difference.coords[-1][0]
+        lat_land = difference.coords[-1][1]
+    else:
+        raise ValueError(f'Difference did not return a MultiLineString or a LineString as expected: {difference.geom_type}')
         
-        i += 1
-        if i >= 20:
-            raise StopIteration(f'Tried {i} times to find closest land point: stopping.')
-        
-    if lon_land > 180. or lon_land < -180.:
-        warn(f'Longitude point out of bounds: {lon_land}, returning NaN.')
+    if lon_land == line.coords[-1][0] or lat_land == line.coords[-1][1]:
+        # 'land' point is just end point of line: did not cross land polygon
+        warn(f'''No land point found for {(lon_p, lat_p, angle)}, returning NaN values.
+             If this happens for all points, consider increasing dist={dist}.''')
         lon_land = np.nan
-    if lat_land > 90. or lat_land < -90.:
-        warn(f'Latitude point out of bounds: {lat_land}, returning NaN.')
         lat_land = np.nan
     
     return lon_land, lat_land
     
 if __name__ == '__main__':    
     ds_full = xr.load_dataset('tests/data/ozroms_20170613.nc')
-    # # WA
-    # lon_range = [114.0, 116.0]
-    # lat_range = [-34.0, -31.0]
-    # SA
-    lon_range = [132.0, 140.0]
-    lat_range = [-39.0, -29.0]
+    # WA
+    lon_range = [114.0, 116.0]
+    lat_range = [-34.0, -31.0]
+    # # SA
+    # lon_range = [132.0, 140.0]
+    # lat_range = [-39.0, -29.0]
     # # GSR
     # lon_range = None
     # lat_range = None
@@ -187,7 +178,7 @@ if __name__ == '__main__':
     ax.plot(x, y, transform=ccrs.PlateCarree())
 
     for i in range(len(lon_ps)):
-        lon_land, lat_land = find_closest_land_point_at_angle(lon_ps[i], lat_ps[i], angles[i], largest_land)
+        lon_land, lat_land = find_closest_land_point_at_angle(lon_ps[i], lat_ps[i], angles[i], largest_land, dist=0.001)
         if np.isnan(lon_land) or np.isnan(lat_land):
             ax.plot(lon_ps[i], lat_ps[i], 'xr')
             continue
