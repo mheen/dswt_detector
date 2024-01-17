@@ -20,19 +20,21 @@ mask = np.array([[1, 1, 1, 0], [1, 1, 1, 0], [1, 1, 0, 0], [1, 1, 0, 0], [1, 1, 
 def convert_land_mask_to_polygons(lon:np.ndarray[float], lat:np.ndarray[float], mask:np.ndarray[int]) -> list[shapely.Polygon]:
     land_mask = np.abs(mask-1).astype(np.int32) # assuming ocean points are 1 in mask!
     
-    # create transformation so that lon and lat coordinates are used to create polygons
-    # !!! FIX !!! transformation probably not working correctly
-    gcps = []
-    for i in range(land_mask.shape[0]):
-        for j in range(land_mask.shape[1]):
-            gcps.append(rasterio.control.GroundControlPoint(row=i, col=j, x=lon[i, j], y=lat[i, j]))
-    affine_transform = rasterio.transform.from_gcps(gcps)
+    shapes = features.shapes(land_mask, mask=land_mask.astype(bool)) # mask so that only land polygons are returned
     
-    shapes = features.shapes(land_mask, mask=land_mask.astype(bool), transform=affine_transform) # mask so that only land polygons are returned
+    # add extra column and row to lon and lat because polygon goes around edges
+    # note: this is obviously not the best way to do this, but errors seem to be minor
+    lon_extended = np.hstack((lon, np.expand_dims(lon[:, -1], 1)))
+    lon_extended = np.vstack((lon_extended, lon_extended[-1, :]))
+    lat_extended = np.hstack((lat, np.expand_dims(lat[:, -1], 1)))
+    lat_extended = np.vstack((lat_extended, lat_extended[-1, :]))
     
     land_polys = []
     for vec, _ in shapes:
-        land_polys.append(shapely.geometry.shape(vec))
+        i, j = shapely.geometry.shape(vec).exterior.xy
+        i = np.array(i).astype(int)
+        j = np.array(j).astype(int)
+        land_polys.append(shapely.Polygon(list(zip(lon_extended[j, i], lat_extended[j, i]))))
         
     return land_polys
 
@@ -46,6 +48,12 @@ def get_largest_land_polygon(land_polys:list[shapely.Polygon]) -> shapely.Polygo
     i_max = np.where(np.array(areas) == max(areas))[0][0]
     
     return land_polys[i_max]
+
+def get_land_polygon(lon:np.ndarray, lat:np.ndarray, mask:np.ndarray) -> shapely.Polygon:
+    land_polys = convert_land_mask_to_polygons(lon, lat, mask)
+    largest_land = get_largest_land_polygon(land_polys)
+    
+    return largest_land
 
 def get_continental_shelf_grid_indices(h:np.ndarray, shelf_depth=200) -> tuple[int, int]:
     # not using this: using grid points means angles are all square, gives weird transects
@@ -143,42 +151,58 @@ def find_closest_land_point_at_angle(lon_p:float, lat_p:float, angle:float,
     
     return lon_land, lat_land
     
-if __name__ == '__main__':    
-    ds_full = xr.load_dataset('tests/data/ozroms_20170613.nc')
-    # WA
-    lon_range = [114.0, 116.0]
-    lat_range = [-34.0, -31.0]
-    # # SA
-    # lon_range = [132.0, 140.0]
-    # lat_range = [-39.0, -29.0]
-    # # GSR
-    # lon_range = None
-    # lat_range = None
+if __name__ == '__main__':
+    test = 'ozroms'
+    region = 'gsr'
     
-    if lon_range is not None and lat_range is not None:
-        xi0, xi1, eta0, eta1 = find_eta_xi_covering_lon_lat_box(ds_full.lon_rho.values, ds_full.lat_rho.values, lon_range, lat_range)
-        ds = ds_full.isel(eta_rho=slice(eta0, eta1), xi_rho=slice(xi0, xi1))
-    else:
-        ds = ds_full
+    def test_ozroms(input_path='tests/data/ozroms_20170613.nc', region='WA') -> xr.Dataset:
+        ds_full = xr.load_dataset(input_path)
+        
+        if region.lower() == 'wa':
+            lon_range = [114.0, 116.0]
+            lat_range = [-34.0, -31.0]
+        if region.lower() == 'sa':
+            lon_range = [132.0, 140.0]
+            lat_range = [-39.0, -29.0]
+        if region.lower() == 'gsr' or region.lower() == 'full':
+            lon_range = None
+            lat_range = None
+        
+        if lon_range is not None and lat_range is not None:
+            xi0, xi1, eta0, eta1 = find_eta_xi_covering_lon_lat_box(ds_full.lon_rho.values, ds_full.lat_rho.values, lon_range, lat_range)
+            ds = ds_full.isel(eta_rho=slice(eta0, eta1), xi_rho=slice(xi0, xi1))
+        else:
+            ds = ds_full
+            
+        return ds
+    
+    def test_cwa(input_path='tests/data/cwa_grid.nc') -> xr.Dataset:
+        ds = xr.load_dataset(input_path)
+        
+        return ds
+    
+    if test == 'cwa':
+        ds = test_cwa()
+    elif test == 'ozroms':
+        ds = test_ozroms(region=region)
     
     lon = ds.lon_rho.values
     lat = ds.lat_rho.values
     
-    land_polys = convert_land_mask_to_polygons(lon, lat, ds.mask_rho.values)
-    largest_land = get_largest_land_polygon(land_polys)
+    land_polygon = get_land_polygon(lon, lat, ds.mask_rho.values)
     
     lon_ps, lat_ps = get_continental_shelf_points(lon, lat, ds.h.values)
         
     angles = calculate_perpendicular_angles_to_shelf_points(lon_ps, lat_ps)    
     
     ax = plt.axes(projection=ccrs.PlateCarree())
-    ax = plot_basic_map(ax, lon_range=lon_range, lat_range=lat_range)
+    ax = plot_basic_map(ax, lon_range=[np.nanmin(lon), np.nanmax(lon)], lat_range=[np.nanmin(lat), np.nanmax(lat)])
     ax = plot_contours(lon, lat, ds.h.values, ax=ax, clevels=[200])
-    x, y = largest_land.exterior.xy
+    x, y = land_polygon.exterior.xy
     ax.plot(x, y, transform=ccrs.PlateCarree())
 
     for i in range(len(lon_ps)):
-        lon_land, lat_land = find_closest_land_point_at_angle(lon_ps[i], lat_ps[i], angles[i], largest_land, dist=0.001)
+        lon_land, lat_land = find_closest_land_point_at_angle(lon_ps[i], lat_ps[i], angles[i], land_polygon)
         if np.isnan(lon_land) or np.isnan(lat_land):
             ax.plot(lon_ps[i], lat_ps[i], 'xr')
             continue
