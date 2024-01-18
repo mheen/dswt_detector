@@ -1,15 +1,14 @@
 from tools.roms import get_eta_xi_along_transect, find_eta_xi_covering_lon_lat_box
 from tools.coordinates import get_bearing_between_points
+from tools import log
 
 import numpy as np
 import xarray as xr
-import rasterio
 from rasterio import features
 import shapely
-from shapely.ops import nearest_points
 from pyproj import Geod
-from skimage import measure
 from warnings import warn
+import json
 
 import matplotlib.pyplot as plt
 from plot_tools.basic_maps import plot_basic_map, plot_contours
@@ -133,66 +132,25 @@ def find_closest_land_point_at_angle(lon_p:float, lat_p:float, angle:float,
         lat_land = np.nan
     
     return lon_land, lat_land
-    
-if __name__ == '__main__':
-    test = 'ozroms'
-    region = 'gsr'
-    
-    def test_ozroms(input_path='tests/data/ozroms_20170613.nc', region='WA') -> xr.Dataset:
-        ds_full = xr.load_dataset(input_path)
-        
-        if region.lower() == 'wa':
-            lon_range = [114.0, 116.0]
-            lat_range = [-34.0, -31.0]
-        if region.lower() == 'sa':
-            lon_range = [132.0, 140.0]
-            lat_range = [-39.0, -29.0]
-        if region.lower() == 'gsr' or region.lower() == 'full':
-            lon_range = None
-            lat_range = None
-        
-        if lon_range is not None and lat_range is not None:
-            xi0, xi1, eta0, eta1 = find_eta_xi_covering_lon_lat_box(ds_full.lon_rho.values, ds_full.lat_rho.values, lon_range, lat_range)
-            ds = ds_full.isel(eta_rho=slice(eta0, eta1), xi_rho=slice(xi0, xi1))
-        else:
-            ds = ds_full
-            
-        return ds
-    
-    def test_cwa(input_path='tests/data/cwa_grid.nc') -> xr.Dataset:
-        ds = xr.load_dataset(input_path)
-        
-        return ds
-    
-    if test == 'cwa':
-        ds = test_cwa()
-    elif test == 'ozroms':
-        ds = test_ozroms(region=region)
-    
-    lon = ds.lon_rho.values
-    lat = ds.lat_rho.values
-    
-    land_polygon = get_land_polygon(lon, lat, ds.mask_rho.values)
-    
-    lon_ps, lat_ps = get_continental_shelf_points(lon, lat, ds.h.values)
-        
-    angles = calculate_perpendicular_angles_to_shelf_points(lon_ps, lat_ps)    
-    
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax = plot_basic_map(ax, lon_range=[np.nanmin(lon), np.nanmax(lon)], lat_range=[np.nanmin(lat), np.nanmax(lat)])
-    ax = plot_contours(lon, lat, ds.h.values, ax=ax, clevels=[200])
-    x, y = land_polygon.exterior.xy
-    ax.plot(x, y, transform=ccrs.PlateCarree())
 
-    for i in range(len(lon_ps)):
-        lon_land, lat_land = find_closest_land_point_at_angle(lon_ps[i], lat_ps[i], angles[i], land_polygon)
+def generate_transects_json_file(ds:xr.Dataset, output_path:str):
+    
+    land_polygon = get_land_polygon(ds.lon_rho.values, ds.lat_rho.values, ds.mask_rho.values)
+    shelf_lons, shelf_lats = get_continental_shelf_points(ds.lon_rho.values, ds.lat_rho.values, ds.h.values)
+    angles = calculate_perpendicular_angles_to_shelf_points(shelf_lons, shelf_lats)
+    
+    transects = {}
+    for i in range(len(shelf_lons)):
+        lon_land, lat_land = find_closest_land_point_at_angle(shelf_lons[i], shelf_lats[i], angles[i], land_polygon)
         if np.isnan(lon_land) or np.isnan(lat_land):
-            ax.plot(lon_ps[i], lat_ps[i], 'xr')
             continue
-        eta, xi = get_eta_xi_along_transect(ds.lon_rho.values, ds.lat_rho.values, lon_land, lat_land, lon_ps[i], lat_ps[i], 500.)
-        ax.plot(lon[eta, xi], lat[eta, xi], '.')
-        ax.plot(lon[eta, xi], lat[eta, xi], '-')
-        ax.plot(lon_ps[i], lat_ps[i], 'xk')
-        ax.plot(lon_land, lat_land, 'ok')
+        eta, xi = get_eta_xi_along_transect(ds.lon_rho.values, ds.lat_rho.values, lon_land, lat_land, shelf_lons[i], shelf_lats[i], 500.)
+        transects[f't{i}'] = {'eta': [int(i) for i in eta], 'xi': [int(i) for i in xi]}
+    
+    log.info(f'Writing transects to json file: {output_path}')
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(transects, f, ensure_ascii=False, indent=4)
+    
+# add plotting function to check transects?
 
-    plt.show()
+# add function that determines how many grid cells are not covered by transects?
