@@ -144,8 +144,7 @@ def generate_transects_json_file(ds:xr.Dataset, output_path:str):
         lon_land, lat_land = find_closest_land_point_at_angle(shelf_lons[i], shelf_lats[i], angles[i], land_polygon)
         if np.isnan(lon_land) or np.isnan(lat_land):
             continue
-        eta, xi = get_eta_xi_along_transect(ds.lon_rho.values, ds.lat_rho.values, lon_land, lat_land, shelf_lons[i], shelf_lats[i], 500.)
-        transects[f't{i}'] = {'eta': [int(i) for i in eta], 'xi': [int(i) for i in xi]}
+        transects[f't{i}'] = {'lon_land': lon_land, 'lat_land': lat_land, 'lon_ocean': shelf_lons[i], 'lat_ocean': shelf_lats[i]}
     
     log.info(f'Writing transects to json file: {output_path}')
     with open(output_path, 'w', encoding='utf-8') as f:
