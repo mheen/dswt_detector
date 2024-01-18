@@ -15,8 +15,6 @@ import matplotlib.pyplot as plt
 from plot_tools.basic_maps import plot_basic_map, plot_contours
 import cartopy.crs as ccrs
 
-mask = np.array([[1, 1, 1, 0], [1, 1, 1, 0], [1, 1, 0, 0], [1, 1, 0, 0], [1, 1, 1, 0]]) # small test
-
 def convert_land_mask_to_polygons(lon:np.ndarray[float], lat:np.ndarray[float], mask:np.ndarray[int]) -> list[shapely.Polygon]:
     land_mask = np.abs(mask-1).astype(np.int32) # assuming ocean points are 1 in mask!
     
@@ -24,10 +22,10 @@ def convert_land_mask_to_polygons(lon:np.ndarray[float], lat:np.ndarray[float], 
     
     # add extra column and row to lon and lat because polygon goes around edges
     # note: this is obviously not the best way to do this, but errors seem to be minor
-    lon_extended = np.hstack((lon, np.expand_dims(lon[:, -1], 1)))
+    lon_extended = np.hstack((lon, np.expand_dims(lon[:, -1]+np.diff(lon, axis=1)[:, -1], 1)))
     lon_extended = np.vstack((lon_extended, lon_extended[-1, :]))
     lat_extended = np.hstack((lat, np.expand_dims(lat[:, -1], 1)))
-    lat_extended = np.vstack((lat_extended, lat_extended[-1, :]))
+    lat_extended = np.vstack((lat_extended, lat_extended[-1, :]+np.diff(lat_extended, axis=0)[-1, :]))
     
     land_polys = []
     for vec, _ in shapes:
@@ -55,23 +53,8 @@ def get_land_polygon(lon:np.ndarray, lat:np.ndarray, mask:np.ndarray) -> shapely
     
     return largest_land
 
-def get_continental_shelf_grid_indices(h:np.ndarray, shelf_depth=200) -> tuple[int, int]:
-    # not using this: using grid points means angles are all square, gives weird transects
-    contours = measure.find_contours(h, shelf_depth)
-    contour_lengths = np.array([len(contour) for contour in contours])
-    longest_contour = contours[np.where(contour_lengths == np.nanmax(contour_lengths))[0][0]]
-    # longest_contour is an array with interpolated i, j indices to shelf_depth
-    # I am ignoring the fraction of the indices and instead flooring them to the nearest full index
-    # this means that the returned locations will not be exactly at the shelf_depth
-    # but this is not a strict requirement to generate transects, and the shelf_depth is likely
-    # chosen deeper than the actual depth that will be used to analyse for DSWT
-    eta = np.floor(longest_contour[:, 0]).astype(int)
-    xi = np.floor(longest_contour[:, 1]).astype(int)
-    
-    return (eta, xi)
-
 def get_continental_shelf_points(lon:np.ndarray, lat:np.ndarray, h:np.ndarray,
-                                 shelf_depth=200) -> tuple[float, float]:
+                                 shelf_depth=200.) -> tuple[float, float]:
     
     # open and close dummy figure (unfortunately way to get this done using matplotlib)
     # !!! FIX !!! see if this can be done without matplotlib, maybe gdal?
@@ -107,7 +90,7 @@ def calculate_perpendicular_angles_to_shelf_points(lon_ps:np.ndarray, lat_ps:np.
     
     angle = np.array(angle)
     
-    perpendicular_angle = angle+90 # !!! FIX !!! needs to be either +90 or -90 depending on direction
+    perpendicular_angle = angle + 90. # !!! FIX !!! needs to be either +90 or -90 depending on direction
     
     return np.deg2rad(perpendicular_angle)
 
