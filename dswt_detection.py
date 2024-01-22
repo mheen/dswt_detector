@@ -172,7 +172,7 @@ def plot_cycling_vertical_density_gradients(transect_ds:xr.Dataset, t_interval=1
     plt.show()
 
 if __name__ == '__main__':
-    roms_ds = load_roms_data('tests/data/', grid_file='tests/data/cwa_grid.nc', files_contain='cwa_test_dswt')
+    roms_ds = load_roms_data('tests/data/', grid_file='tests/data/cwa_grid.nc', files_contain='cwa_20170613')
     transect_ds = select_roms_transect(roms_ds, 115.7, -31.76, 115.26, -31.95)
     l_dswt = determine_dswt_along_transect(transect_ds)
     

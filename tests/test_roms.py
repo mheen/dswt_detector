@@ -13,7 +13,7 @@ cwa_grid = xr.load_dataset('tests/data/cwa_grid.nc')
 cwa_lon = cwa_grid.lon_rho.values
 cwa_lat = cwa_grid.lat_rho.values
 
-cwa_ds = load_roms_data('tests/data/', files_contain='cwa_test_dswt', grid_file='tests/data/cwa_grid.nc')
+cwa_ds = load_roms_data('tests/data/', files_contain='cwa_20170613', grid_file='tests/data/cwa_grid.nc')
 
 class TestCoords:
     def test_point(self):
@@ -40,15 +40,15 @@ def test_z_rho():
     
 class TestLoadRoms:    
     def test_input_file_selection(self):
-        paths = select_input_files('tests/data/', file_contains='cwa_test_dswt')
-        assert paths == ['tests/data/cwa_test_dswt.nc']
+        paths = select_input_files('tests/data/', file_contains='cwa_20170613')
+        assert paths == ['tests/data/cwa_20170613.nc']
 
     def test_grid_file_error(self):
         with pytest.raises(ValueError):
-            load_roms_data('tests/data/', files_contain='cwa_test_dswt')
+            load_roms_data('tests/data/', files_contain='cwa_20170613')
             
 def test_u_east_conversion():
-    assert np.round(cwa_ds.u_east[0, 0, 0, 0].values, 3) == -0.065 and np.round(cwa_ds.u_east[4, 10, 320, 240].values, 3) == -0.045
+    assert np.round(cwa_ds.u_eastward[0, 0, 0, 0].values, 3) == -0.065 and np.round(cwa_ds.u_eastward[4, 10, 320, 240].values, 3) == -0.045
     
 def test_v_north_conversion():
-    assert np.round(cwa_ds.v_north[0, 0, 0, 0].values, 3) == -0.025 and np.round(cwa_ds.v_north[4, 10, 320, 240].values, 3) == 0.062
+    assert np.round(cwa_ds.v_northward[0, 0, 0, 0].values, 3) == -0.025 and np.round(cwa_ds.v_northward[4, 10, 320, 240].values, 3) == 0.062
