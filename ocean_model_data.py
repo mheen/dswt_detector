@@ -25,9 +25,9 @@ def select_input_files(input_dir:str, file_contains=None,
         
     return files
 
-def read_roms_data(input_dir:str, grid_file:str, files_contain:str) -> xr.Dataset:
-    paths = select_input_files(input_dir, file_contains=files_contain)
-    roms_ds = xr.open_mfdataset(paths, data_vars='minimal')
+def read_roms_data(input_paths:str, grid_file:str) -> xr.Dataset:
+    log.info(f'Reading ROMS data from files: {input_paths}')
+    roms_ds = xr.open_mfdataset(input_paths, data_vars='minimal')
     
     # read grid variables if in separate file
     if 'lon_rho' not in roms_ds.variables:
@@ -101,8 +101,16 @@ def add_variables_to_roms_data(roms_ds:xr.Dataset) -> xr.Dataset:
         
     return roms_ds
 
-def load_roms_data(input_dir:str, grid_file=None, files_contain=None) -> xr.Dataset:
-    roms_ds = read_roms_data(input_dir, grid_file, files_contain)
+def load_roms_data(input_path:str, grid_file=None) -> xr.Dataset:
+    roms_ds = read_roms_data([input_path], grid_file)
+    roms_ds = convert_roms_u_and_v(roms_ds)
+    roms_ds = add_variables_to_roms_data(roms_ds)
+    
+    return roms_ds
+
+def load_mf_roms_data(input_dir:str, grid_file=None, files_contain=None) -> xr.Dataset:
+    input_paths = select_input_files(input_dir, file_contains=files_contain)
+    roms_ds = read_roms_data(input_paths, grid_file, files_contain)
     roms_ds = convert_roms_u_and_v(roms_ds)
     roms_ds = add_variables_to_roms_data(roms_ds)
 
