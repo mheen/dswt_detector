@@ -6,7 +6,7 @@ from typing import Callable, TypeVar, List
 
 T = TypeVar("T")
 
-def example():
+def example_plot_cycler():
     def plot(fig: Figure, a: int):
         formule = lambda x: a*x
         ax = fig.gca()
@@ -20,12 +20,12 @@ def example():
     fig.show()
 
 def plot_cycler(plot_fn: Callable[[Figure,T], None], inputs: List[T]) -> Figure:
-    # Create a figure than can cycle between plots with right and left keyboard keys
+    '''Create a figure that can cycle between plots with right and left keyboard keys'''
 
     class Counter:
         value = 0
 
-    fig = plt.figure(figsize=(7, 7))
+    fig = plt.figure(figsize=(7, 9))
     current_idx = Counter()
 
     def update_plot(val):
