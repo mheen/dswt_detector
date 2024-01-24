@@ -1,3 +1,7 @@
+import os, sys
+parent = os.path.abspath('.')
+sys.path.insert(1, parent)
+
 from ocean_model_data import load_roms_data, select_roms_transect
 from itertools import groupby
 import numpy as np
