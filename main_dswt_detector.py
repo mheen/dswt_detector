@@ -1,6 +1,7 @@
 from ocean_model_data import load_roms_data, select_roms_subset, select_input_files
 from generate_transects import generate_transects_json_file
-from dswt_detection import determine_dswt_along_multiple_transects
+from tools.dswt_detection import determine_dswt_along_multiple_transects
+from process_dswt_detection import write_daily_mean_dswt_fraction_to_csv, calculate_monthly_mean_dswt_fraction
 from gui_tools import plot_dswt_maps_transects
 
 from tools import log
@@ -9,6 +10,8 @@ import os
 import numpy as np
 from datetime import datetime, timedelta
 import pandas as pd
+
+import matplotlib.pyplot as plt
 
 # --------------------------------------------------------
 # User input
@@ -70,34 +73,21 @@ else:
 # --------------------------------------------------------
 # Detect dense shelf water transport
 # --------------------------------------------------------
-# loops over all selected files
-roms_files = select_input_files(input_dir, files_contain)
-roms_files.sort()
+# detect DSWT along transects and write to csv if file does not already exist
+if not os.path.exists(output_file):
+    write_daily_mean_dswt_fraction_to_csv(input_dir, files_contain, grid_file,
+                                          transects_file, output_file,
+                                          lon_range=lon_range, lat_range=lat_range)
+else:
+    log.info(f'Output file already exists, using existing file: {output_file}')
 
-time = []
-f_dswt = []
-for file in roms_files:
-    # --- Load ROMS data
-    ds = load_roms_data(file, grid_file)
-    
-    if lon_range is not None and lat_range is not None: # does this make computation faster?
-        ds = select_roms_subset(ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
-        
-    # --- Find DSWT along transects
-    l_dswt = determine_dswt_along_multiple_transects(ds, transects_file)    
-    
-    # get daily mean percentage of DSWT occurrence along transects
-    # !!! FIX !!! assuming here that each file contains daily data -> keep?
-    f_dswt.append(np.nanmean(np.sum(l_dswt, axis=1)/l_dswt.shape[1]))
-    ocean_time0 = pd.to_datetime(ds.ocean_time.values[0])
-    time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
-
-# --- Write to output file
-log.info(f'Writing daily fraction DSWT occurrence to file: {output_file}')
-time = np.array(time).flatten()
-f_dswt = np.array(f_dswt).flatten()
-df = pd.DataFrame(np.array([time, f_dswt]).transpose(), columns=['time', 'f_dswt'])
-df.to_csv(output_file, index=False)
+# --------------------------------------------------------
+# 
+# --------------------------------------------------------
+time, f_dswt = calculate_monthly_mean_dswt_fraction(output_file)
+ax = plt.axes()
+ax.bar(time, f_dswt)
+plt.show()
 
 # --------------------------------------------------------
 # Interactive plots to check DSWT detection
