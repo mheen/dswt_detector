@@ -1,52 +1,109 @@
-from ocean_model_data import load_roms_data, select_roms_subset
+from ocean_model_data import load_roms_data, select_roms_subset, select_input_files
 from generate_transects import generate_transects_json_file
 from dswt_detection import determine_dswt_along_multiple_transects
 from gui_tools import plot_dswt_maps_transects
 
 from tools import log
+from tools.files import get_dir_from_json
 import os
 import numpy as np
+from datetime import datetime, timedelta
+import pandas as pd
 
 # --------------------------------------------------------
 # User input
 # --------------------------------------------------------
-input_dir = 'tests/data/'
+# --- Input file info
+main_input_dir = get_dir_from_json('cwa-roms')
+year = '2017'
 model = 'cwa'
-grid_file = 'tests/data/cwa_grid.nc' # set to None if not needed
-date = '20170623'
-files_contain = f'{model}_{date}' # set to None if not needed
 
+input_dir = f'{main_input_dir}{year}/'
+grid_file = 'tests/data/cwa_grid.nc'
+
+files_contain = f'{model}_' # set to None if not needed
+
+transects_dir = 'transects/'
+
+# --- Output file info
+output_dir = 'output/'
+
+# --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
 lat_range = [-33.0, -31.0] # set to None for full domain
 
+# --- DSWT detection settings
+# no need to change if using recommended settings
+if model.lower() == 'cwa':
+    minimum_drhodz = 0.02
+    minimum_p_cells = 0.30
+    filter_depth = 100.
+elif model.lower() == 'ozroms': # note: for daily ozroms
+    minimum_drhodz = 0.01
+    minimum_p_cells = 0.30
+    filter_depth = 100.
+else: # default settings
+    minimum_drhodz = 0.02
+    minimum_p_cells = 0.30
+    filter_depth = 100.
+
+# --- Automated file naming (no need to change)
 lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
 lon_range_unit = 'E' if lon_range[0] > 0 else 'W'
 lat_range_str = f'{int(abs(np.floor(lat_range[0])))}-{int(abs(np.ceil(lat_range[1])))}'
 lat_range_unit = 'S' if lat_range[0] < 0 else 'S'
-domain_name = f'{model}_{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
+domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
 
-transects_file = f'input/transects_{domain_name}.json'
+transects_file = f'{transects_dir}{model}_{domain}.json'
+
+output_file = f'{output_dir}{model}_{year}_{domain}.csv'
+
+# --------------------------------------------------------
+# Create transects
+# --------------------------------------------------------
+# create transects and save to .json file if file does not already exist
+if not os.path.exists(transects_file):
+    generate_transects_json_file(grid_file, transects_file)
+else:
+    log.info(f'Transects file already exists, using existing file: {transects_file}')
 
 # --------------------------------------------------------
 # Detect dense shelf water transport
 # --------------------------------------------------------
+# loops over all selected files
+roms_files = select_input_files(input_dir, files_contain)
+roms_files.sort()
 
-# --- Load ROMS data
-ds = load_roms_data(input_dir, grid_file=grid_file, files_contain=files_contain)
-if lon_range is not None and lat_range is not None:
-    ds = select_roms_subset(ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
+time = []
+f_dswt = []
+for file in roms_files:
+    # --- Load ROMS data
+    ds = load_roms_data(file, grid_file)
     
-# --- Create transects (saved to .json file)
-if not os.path.exists(transects_file):
-    generate_transects_json_file(ds, transects_file)
-else:
-    log.info(f'Transects file already exists, using existing file: {transects_file}')
+    if lon_range is not None and lat_range is not None: # does this make computation faster?
+        ds = select_roms_subset(ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
+        
+    # --- Find DSWT along transects
+    l_dswt = determine_dswt_along_multiple_transects(ds, transects_file)    
+    
+    # get daily mean percentage of DSWT occurrence along transects
+    # !!! FIX !!! assuming here that each file contains daily data -> keep?
+    f_dswt.append(np.nanmean(np.sum(l_dswt, axis=1)/l_dswt.shape[1]))
+    ocean_time0 = pd.to_datetime(ds.ocean_time.values[0])
+    time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
 
-# --- Find DSWT along transects
-l_dswt = determine_dswt_along_multiple_transects(ds, transects_file)
+# --- Write to output file
+log.info(f'Writing daily fraction DSWT occurrence to file: {output_file}')
+time = np.array(time).flatten()
+f_dswt = np.array(f_dswt).flatten()
+df = pd.DataFrame(np.array([time, f_dswt]).transpose(), columns=['time', 'f_dswt'])
+df.to_csv(output_file, index=False)
 
-# --- Check DSWT using interactive map and transect plotter
-# Use keyboard arrows to cycle through time
-# Use mouse to click on transects to plot transect data
-plot_dswt_maps_transects(ds, transects_file, l_dswt, transect_interval=5,
-                         lon_range=lon_range, lat_range=lat_range)
+# --------------------------------------------------------
+# Interactive plots to check DSWT detection
+# --------------------------------------------------------
+# # --- Check DSWT using interactive map and transect plotter
+# # Use keyboard arrows to cycle through time
+# # Use mouse to click on transects to plot transect data
+# plot_dswt_maps_transects(ds, transects_file, l_dswt, transect_interval=5,
+#                          lon_range=lon_range, lat_range=lat_range)
