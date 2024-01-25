@@ -51,10 +51,35 @@ def plot_transects(ax:plt.axes, transects:list[dict], t:int) -> tuple[plt.axes, 
     
     return ax, l
 
+def get_vmin_vmax(vmin:float, vmax:float, variable:str, roms_ds:xr.Dataset) -> tuple[float, float]:
+    if vmin is None:
+        if variable == 'temp':
+            vmin = 20.0
+        elif variable == 'density':
+            vmin = 1024.8
+        elif variable == 'salt':
+            vmin = 34.8
+        elif variable == 'vertical_density_gradient':
+            vmin = -0.005
+        else:
+            vmin = np.round(np.nanmin(roms_ds[variable].values), 1)
+    if vmax is None:
+        if variable == 'temp':
+            vmax = 22.0
+        elif variable == 'density':
+            vmax = 1025.4
+        elif variable == 'salt':
+            vmax = 35.8
+        elif variable == 'vertical_density_gradient':
+            vmax = 0.05
+        else:
+            vmax = np.round(np.nanmin(roms_ds[variable].values), 1)
+    return vmin, vmax
+
 def plot_dswt_maps_transects(roms_ds:xr.Dataset, transects_file:str,
                              l_dswt:np.ndarray,
-                             variable='temp', vmin=20, vmax=22, cmap='RdYlBu_r',
-                             t_interval=1, transect_interval=10,
+                             variable='density', vmin=None, vmax=None, cmap='RdYlBu_r',
+                             t_interval=1, transect_interval=2,
                              lon_range=None, lat_range=None) -> plt.axes:
 
     if variable not in roms_ds.variables:
@@ -66,6 +91,8 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset, transects_file:str,
                                       l_dswt)
     
     time_strs = pd.to_datetime(roms_ds.ocean_time.values)
+    
+    vmin, vmax = get_vmin_vmax(vmin, vmax, variable, roms_ds) 
     
     def single_plot(fig, req_time):
         
