@@ -23,6 +23,7 @@ def calculate_horizontal_density_gradient_along_transect(transect_ds:xr.Dataset)
 def determine_dswt_along_transect(transect_ds:xr.Dataset,
                                   minimum_drhodz=0.02,
                                   minimum_p_cells=0.3,
+                                  drhodz_depth_p=0.5,
                                   filter_depth=100.):
     '''Determines if DSWT is occurring along a transect or not.
     Conditions for DSWT are:
@@ -35,10 +36,16 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
        can be used to help determine what this value should be.
     2. The vertical density gradient must exceed a minimum value (minimum_drhodz) for
        at least a minimum amount of consecutive grid cells (determined as a percentage
-       of the total number of cells along the transect: minimum_p_cells). This also
-       returns one bool per time over the entire transect.
+       of the total number of cells along the transect: minimum_p_cells). This must happen
+       in the bottom layers of the model, specified as a percentage of cells (drhodz_depth_p).
+       This condition also returns one bool per time over the entire transect.
        The default value for minimum_p_cells = 0.3 (30%), which should hopefully work
        independent of the ocean model used.
+       The default value for drhodz_depth_p = 0.5 (50%), which should hopefully work
+       independent of the ocean model used. This condition was added because there
+       can sometimes be high drhodz values at the ocean surface (for example when
+       there are high salinity values at the ocean surface and when temperature values
+       do not change much).
     
     The depth up to which data along the transect is used can be filtered by setting a maximum
     depth value for filter_depth. The default value for filter_depth = 100.0 (m). This filter
@@ -58,7 +65,9 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
     # condition 2: vertical density gradient > a minimum value (differs per ocean model)
     # AND the vertical density gradient must exceed this value for a minimum number of cells
     # the result is that DSWT is determined for the entire transect
-    l_drhodz = np.any(transect_ds.vertical_density_gradient > minimum_drhodz, axis=1) # [time, distance] (check for any along depth)
+    n_z_layers = len(transect_ds.z_rho)
+    n_depth_layers = int(np.ceil(n_z_layers*drhodz_depth_p))
+    l_drhodz = np.any(transect_ds.vertical_density_gradient[:, 0:n_depth_layers, :] > minimum_drhodz, axis=1) # [time, distance] (check for any along depth)
     n_used_cells = sum(~np.isnan(transect_ds.h))
     condition2 = []
     for t in range(len(transect_ds.ocean_time)):
@@ -99,4 +108,7 @@ def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects_file:s
         l_dswt[:, i] = l_dswt_t
         
     return l_dswt    
-    
+
+if __name__ == '__main__':
+    roms_ds = load_roms_data('tests/data/cwa_20170222.nc', 'tests/data/cwa_grid.nc')
+    l_dswt = determine_dswt_along_multiple_transects(roms_ds, 'tests/data/cwa_transects.json')
