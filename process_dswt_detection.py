@@ -1,9 +1,19 @@
-from ocean_model_data import select_input_files, load_roms_data, select_roms_subset
+from ocean_model_data import select_input_files, load_roms_data, select_roms_subset, select_roms_transect
+from generate_transects import get_transects_dict_from_json
 from tools.dswt_detection import determine_dswt_along_multiple_transects
 from tools import log
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+import xarray as xr
+
+def get_specific_transect_data(roms_ds:xr.Dataset, transects_file:str, transect_name:str) -> xr.Dataset:
+    transects = get_transects_dict_from_json(transects_file)
+    transect = next(item for item in transects if item['name']==transect_name)
+    
+    transect_ds = select_roms_transect(roms_ds, transect['lon_land'], transect['lat_land'],
+                                       transect['lon_ocean'], transect['lat_ocean'])
+    return transect_ds
 
 def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid_file:str,
                                           transects_file:str, output_file:str,
