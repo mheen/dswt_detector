@@ -149,6 +149,27 @@ def generate_transects_json_file(ds:xr.Dataset, output_path:str):
     log.info(f'Writing transects to json file: {output_path}')
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(transects, f, ensure_ascii=False, indent=4)
+
+def get_transects_dict_from_json(transects_file:str) -> list[dict]:
+
+    with open(transects_file, 'r') as f:
+        all_transects = json.load(f)
+    transect_names = list(all_transects.keys())
+    
+    transects = []
+    for i in range(len(transect_names)):
+        lon_land = all_transects[transect_names[i]]['lon_land']
+        lat_land = all_transects[transect_names[i]]['lat_land']
+        lon_ocean = all_transects[transect_names[i]]['lon_ocean']
+        lat_ocean = all_transects[transect_names[i]]['lat_ocean']
+       
+        transect = {'name': transect_names[i],
+                    'lon_land': lon_land, 'lat_land': lat_land,
+                    'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
+
+        transects.append(transect)
+        
+    return transects
     
 # add plotting function to check transects?
 
