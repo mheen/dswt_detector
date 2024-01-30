@@ -1,6 +1,6 @@
 from ocean_model_data import select_input_files, load_roms_data, select_roms_subset, select_roms_transect
 from generate_transects import get_transects_dict_from_json
-from tools.dswt_detection import determine_dswt_along_multiple_transects
+from tools.dswt_detection import determine_dswt_along_multiple_transects, calculate_mean_dswt_along_all_transects
 from tools import log
 import numpy as np
 import pandas as pd
@@ -32,11 +32,10 @@ def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid
             ds = select_roms_subset(ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
             
         # --- Find DSWT along transects
-        l_dswt = determine_dswt_along_multiple_transects(ds, transects_file)    
-        
+        transects_dswt = determine_dswt_along_multiple_transects(ds, transects_file)
         # get daily mean percentage of DSWT occurrence along transects
         # !!! FIX !!! assuming here that each file contains daily data -> keep?
-        f_dswt.append(np.nanmean(np.sum(l_dswt, axis=1)/l_dswt.shape[1]))
+        f_dswt.append(calculate_mean_dswt_along_all_transects(transects_dswt))
         ocean_time0 = pd.to_datetime(ds.ocean_time.values[0])
         time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
 

@@ -22,7 +22,7 @@ def calculate_horizontal_density_gradient_along_transect(transect_ds:xr.Dataset)
 
 def determine_dswt_along_transect(transect_ds:xr.Dataset,
                                   minimum_drhodz=0.02,
-                                  minimum_p_cells=0.3,
+                                  minimum_p_cells=0.1,
                                   drhodz_depth_p=0.5,
                                   filter_depth=100.):
     '''Determines if DSWT is occurring along a transect or not.
@@ -86,28 +86,44 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
 
 def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects_file:str,
                                             minimum_drhodz=0.02,
-                                            minimum_p_cells=0.30,
-                                            filter_depth=100.) -> np.ndarray[bool]:
+                                            minimum_p_cells=0.10,
+                                            drhodz_depth_p=0.5,
+                                            filter_depth=100.) -> dict:
     
     with open(transects_file, 'r') as f:
         all_transects = json.load(f)
     transect_names = list(all_transects.keys())
     
-    l_dswt = np.empty((len(roms_ds.ocean_time), len(transect_names)))
-    for i, t in enumerate(transect_names):
-        lon_land = all_transects[t]['lon_land']
-        lat_land = all_transects[t]['lat_land']
-        lon_ocean = all_transects[t]['lon_ocean']
-        lat_ocean = all_transects[t]['lat_ocean']
+    transects_dswt = {}
+    for transect_name in transect_names:
+        lon_land = all_transects[transect_name]['lon_land']
+        lat_land = all_transects[transect_name]['lat_land']
+        lon_ocean = all_transects[transect_name]['lon_ocean']
+        lat_ocean = all_transects[transect_name]['lat_ocean']
         
         transect_ds = select_roms_transect(roms_ds, lon_land, lat_land, lon_ocean, lat_ocean)
-        l_dswt_t = determine_dswt_along_transect(transect_ds, minimum_drhodz=minimum_drhodz,
-                                                 minimum_p_cells=minimum_p_cells,
+        l_dswt = determine_dswt_along_transect(transect_ds, minimum_drhodz=minimum_drhodz,
+                                                 minimum_p_cells=minimum_p_cells, drhodz_depth_p=drhodz_depth_p,
                                                  filter_depth=filter_depth)
         
-        l_dswt[:, i] = l_dswt_t
+        transects_dswt[transect_name] = {'l_dswt': l_dswt,
+                                         'lon_land': lon_land,
+                                         'lat_land': lat_land,
+                                         'lon_ocean': lon_ocean,
+                                         'lat_ocean': lat_ocean}
         
-    return l_dswt    
+    return transects_dswt    
+
+def calculate_mean_dswt_along_all_transects(transects_dswt:dict) -> float:
+    transect_names = list(transects_dswt.keys())
+    
+    l_dswt = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
+    for i, t in enumerate(transect_names):
+        l_dswt[:, i] = transects_dswt[t]['l_dswt']
+    
+    mean_dswt = np.nanmean(l_dswt)
+    
+    return mean_dswt
 
 if __name__ == '__main__':
     roms_ds = load_roms_data('tests/data/cwa_20170222.nc', 'tests/data/cwa_grid.nc')

@@ -10,20 +10,20 @@ import cartopy.crs as ccrs
 import numpy as np
 import pandas as pd
 
-def get_transects_to_plot(transects_file:str, transect_interval:int,
-                          lon_rho:np.ndarray, lat_rho:np.ndarray,
-                          l_dswt:np.ndarray,
-                          transect_ds=500.) -> list[dict]:
-    with open(transects_file, 'r') as f:
-        all_transects = json.load(f)
-    transect_names = list(all_transects.keys())
+def select_transects_to_plot(transects_dswt:dict, transect_interval:int,
+                             lon_rho:np.ndarray, lat_rho:np.ndarray,
+                             transect_ds=500.) -> list[dict]:
+    
+    transect_names = list(transects_dswt.keys())
     
     transects = []
     for i in np.arange(0, len(transect_names), transect_interval):
-        lon_land = all_transects[transect_names[i]]['lon_land']
-        lat_land = all_transects[transect_names[i]]['lat_land']
-        lon_ocean = all_transects[transect_names[i]]['lon_ocean']
-        lat_ocean = all_transects[transect_names[i]]['lat_ocean']
+        lon_land = transects_dswt[transect_names[i]]['lon_land']
+        lat_land = transects_dswt[transect_names[i]]['lat_land']
+        lon_ocean = transects_dswt[transect_names[i]]['lon_ocean']
+        lat_ocean = transects_dswt[transect_names[i]]['lat_ocean']
+        
+        l_dswt = transects_dswt[transect_names[i]]['l_dswt']
         
         eta, xi = get_eta_xi_along_transect(lon_rho, lat_rho,
                                             lon_land, lat_land,
@@ -31,7 +31,7 @@ def get_transects_to_plot(transects_file:str, transect_interval:int,
                                             transect_ds)
        
         transect = {'name': transect_names[i], 'lon':lon_rho[eta, xi],
-                    'lat': lat_rho[eta, xi], 'dswt': l_dswt[:, i],
+                    'lat': lat_rho[eta, xi], 'dswt': l_dswt,
                     'lon_land': lon_land, 'lat_land': lat_land,
                     'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
 
@@ -77,7 +77,7 @@ def get_vmin_vmax(vmin:float, vmax:float, variable:str, roms_ds:xr.Dataset) -> t
     return vmin, vmax
 
 def plot_dswt_maps_transects(roms_ds:xr.Dataset, transects_file:str,
-                             l_dswt:np.ndarray,
+                             transects_dswt:dict,
                              variable='density', vmin=None, vmax=None, cmap='RdYlBu_r',
                              t_interval=1, transect_interval=2,
                              lon_range=None, lat_range=None) -> plt.axes:
@@ -86,9 +86,8 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset, transects_file:str,
         raise ValueError(f'''Unknown variable requested: {variable}
                          Valid variables are: {list(roms_ds.keys())}''')
     
-    transects = get_transects_to_plot(transects_file, transect_interval,
-                                      roms_ds.lon_rho.values, roms_ds.lat_rho.values,
-                                      l_dswt)
+    transects = select_transects_to_plot(transects_dswt, transect_interval,
+                                         roms_ds.lon_rho.values, roms_ds.lat_rho.values)
     
     time_strs = pd.to_datetime(roms_ds.ocean_time.values)
     
