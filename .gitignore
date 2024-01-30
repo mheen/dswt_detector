@@ -1,6 +1,8 @@
 *.nc
 *.json
 *.csv
+*.sh
+*.jpg
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
