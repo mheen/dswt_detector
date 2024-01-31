@@ -8,6 +8,11 @@ import numpy as np
 import xarray as xr
 import json
 
+minimum_drhodz_default = 0.02
+minimum_p_cells_default = 0.1
+drhodz_depth_p_default = 0.5
+filter_depth_default = 100.
+
 def calculate_horizontal_density_gradient_along_transect(transect_ds:xr.Dataset) -> float:
     drho = np.diff(transect_ds.depth_mean_density.values, axis=1)
     dx = np.diff(transect_ds.distance.values)
@@ -21,10 +26,10 @@ def calculate_horizontal_density_gradient_along_transect(transect_ds:xr.Dataset)
     return drhodx
 
 def determine_dswt_along_transect(transect_ds:xr.Dataset,
-                                  minimum_drhodz=0.02,
-                                  minimum_p_cells=0.1,
-                                  drhodz_depth_p=0.5,
-                                  filter_depth=100.):
+                                  minimum_drhodz=minimum_drhodz_default,
+                                  minimum_p_cells=minimum_p_cells_default,
+                                  drhodz_depth_p=drhodz_depth_p_default,
+                                  filter_depth=filter_depth_default):
     '''Determines if DSWT is occurring along a transect or not.
     Conditions for DSWT are:
     1. There must be a negative horizontal density gradient along the transect
@@ -84,22 +89,20 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
     
     return l_dswt
 
-def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects_file:str,
-                                            minimum_drhodz=0.02,
-                                            minimum_p_cells=0.10,
-                                            drhodz_depth_p=0.5,
-                                            filter_depth=100.) -> dict:
+def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict,
+                                            minimum_drhodz=minimum_drhodz_default,
+                                            minimum_p_cells=minimum_p_cells_default,
+                                            drhodz_depth_p=drhodz_depth_p_default,
+                                            filter_depth=filter_depth_default) -> dict:
     
-    with open(transects_file, 'r') as f:
-        all_transects = json.load(f)
-    transect_names = list(all_transects.keys())
+    transect_names = list(transects.keys())
     
     transects_dswt = {}
     for transect_name in transect_names:
-        lon_land = all_transects[transect_name]['lon_land']
-        lat_land = all_transects[transect_name]['lat_land']
-        lon_ocean = all_transects[transect_name]['lon_ocean']
-        lat_ocean = all_transects[transect_name]['lat_ocean']
+        lon_land = transects[transect_name]['lon_land']
+        lat_land = transects[transect_name]['lat_land']
+        lon_ocean = transects[transect_name]['lon_ocean']
+        lat_ocean = transects[transect_name]['lat_ocean']
         
         transect_ds = select_roms_transect(roms_ds, lon_land, lat_land, lon_ocean, lat_ocean)
         l_dswt = determine_dswt_along_transect(transect_ds, minimum_drhodz=minimum_drhodz,
@@ -114,7 +117,16 @@ def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects_file:s
         
     return transects_dswt    
 
-def calculate_mean_dswt_along_all_transects(transects_dswt:dict) -> float:
+def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict,
+                                            minimum_drhodz=minimum_drhodz_default,
+                                            minimum_p_cells=minimum_p_cells_default,
+                                            drhodz_depth_p=drhodz_depth_p_default,
+                                            filter_depth=filter_depth_default) -> float:
+    transects_dswt = determine_dswt_along_multiple_transects(ds, transects,
+                                                             minimum_drhodz=minimum_drhodz,
+                                                             minimum_p_cells=minimum_p_cells,
+                                                             drhodz_depth_p=drhodz_depth_p,
+                                                             filter_depth=filter_depth)
     transect_names = list(transects_dswt.keys())
     
     l_dswt = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))

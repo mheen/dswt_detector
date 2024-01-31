@@ -1,17 +1,16 @@
 from ocean_model_data import load_roms_data, select_roms_subset, select_input_files
-from generate_transects import generate_transects_json_file
-from tools.dswt_detection import determine_dswt_along_multiple_transects
-from process_dswt_detection import write_daily_mean_dswt_fraction_to_csv, calculate_monthly_mean_dswt_fraction
+from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
+from tools.dswt_detection import calculate_mean_dswt_along_all_transects
 from gui_tools import plot_dswt_maps_transects
+from plot_tools.basic_timeseries import plot_histogram_monthly_dswt
 
 from tools import log
 from tools.files import get_dir_from_json
 import os
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
-
-import matplotlib.pyplot as plt
+import xarray as xr
 
 # --------------------------------------------------------
 # User input
@@ -22,7 +21,7 @@ year = '2017'
 model = 'cwa'
 
 input_dir = f'{main_input_dir}{year}/'
-grid_file = 'tests/data/cwa_grid.nc'
+grid_file = f'{main_input_dir}grid.nc'
 
 files_contain = f'{model}_' # set to None if not needed
 
@@ -39,15 +38,18 @@ lat_range = [-33.0, -31.0] # set to None for full domain
 # no need to change if using recommended settings
 if model.lower() == 'cwa':
     minimum_drhodz = 0.02
-    minimum_p_cells = 0.30
+    minimum_p_cells = 0.10
+    drhodz_depth_p = 0.50
     filter_depth = 100.
 elif model.lower() == 'ozroms': # note: for daily ozroms
     minimum_drhodz = 0.01
-    minimum_p_cells = 0.30
+    minimum_p_cells = 0.10
+    drhodz_depth_p = 0.50
     filter_depth = 100.
 else: # default settings
     minimum_drhodz = 0.02
-    minimum_p_cells = 0.30
+    minimum_p_cells = 0.10
+    drhodz_depth_p = 0.50
     filter_depth = 100.
 
 # --- Automated file naming (no need to change)
@@ -57,7 +59,11 @@ lat_range_str = f'{int(abs(np.floor(lat_range[0])))}-{int(abs(np.ceil(lat_range[
 lat_range_unit = 'S' if lat_range[0] < 0 else 'S'
 domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
 
-transects_file = f'{transects_dir}{model}_{domain}.json'
+# using transects for entire model domain and then selecting
+# only relevant ones within requested domain range
+# (using this method because cutting of the model domain
+# to generate transects can go wrong when determining the land polygon)
+transects_file = f'{transects_dir}{model}_transects.json'
 
 output_file = f'{output_dir}{model}_{year}_{domain}.csv'
 
@@ -66,14 +72,49 @@ output_file = f'{output_dir}{model}_{year}_{domain}.csv'
 # --------------------------------------------------------
 # create transects and save to .json file if file does not already exist
 if not os.path.exists(transects_file):
-    generate_transects_json_file(grid_file, transects_file)
+    grid_ds = xr.open_dataset(grid_file)
+    generate_transects_json_file(grid_ds, transects_file)
 else:
     log.info(f'Transects file already exists, using existing file: {transects_file}')
 
 # --------------------------------------------------------
 # Detect dense shelf water transport
 # --------------------------------------------------------
-# detect DSWT along transects and write to csv if file does not already exist
+def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid_file:str,
+                                          transects_file:str, output_file:str,
+                                          lon_range=None, lat_range=None):
+    
+    if lon_range is not None and lat_range is not None:
+        transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
+    else:
+        transects = get_transects_dict_from_json(transects_file)
+    
+    roms_files = select_input_files(input_dir, files_contain)
+    roms_files.sort()
+
+    time = []
+    f_dswt = []
+    for file in roms_files:
+        # Load ROMS data
+        ds = load_roms_data(file, grid_file)
+        
+        if lon_range is not None and lat_range is not None: # does this make computation faster?
+            ds = select_roms_subset(ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
+            
+        # Get daily mean percentage of DSWT occurrence along transects
+        # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
+        f_dswt.append(calculate_mean_dswt_along_all_transects(ds, transects))
+        ocean_time0 = pd.to_datetime(ds.ocean_time.values[0])
+        time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
+
+    # Write to output file
+    log.info(f'Writing daily fraction DSWT occurrence to file: {output_file}')
+    time = np.array(time).flatten()
+    f_dswt = np.array(f_dswt).flatten()
+    df = pd.DataFrame(np.array([time, f_dswt]).transpose(), columns=['time', 'f_dswt'])
+    df.to_csv(output_file, index=False)
+
+# --- Detect DSWT occurrence and write to csv if file does not already exist
 if not os.path.exists(output_file):
     write_daily_mean_dswt_fraction_to_csv(input_dir, files_contain, grid_file,
                                           transects_file, output_file,
@@ -82,12 +123,28 @@ else:
     log.info(f'Output file already exists, using existing file: {output_file}')
 
 # --------------------------------------------------------
-# 
+# Plot monthly mean DSWT
 # --------------------------------------------------------
+def calculate_monthly_mean_dswt_fraction(input_path:str) -> tuple[np.ndarray[datetime], np.ndarray[float]]:
+    df = pd.read_csv(input_path)
+    time = pd.to_datetime(df['time'].values)
+    f_dswt = df['f_dswt'].values
+    
+    time_m = []
+    f_dswt_m = []
+    for n in range(time[0].month, time[-1].month+1):
+        l_time = [t.month == n for t in time]
+        time_m.append(datetime(time[0].year, n, 1))
+        f_dswt_m.append(np.nanmean(f_dswt[l_time]))
+    
+    time_m = np.array(time_m)
+    f_dswt_m = np.array(f_dswt_m)
+    
+    return time_m, f_dswt_m
+
 time, f_dswt = calculate_monthly_mean_dswt_fraction(output_file)
-ax = plt.axes()
-ax.bar(time, f_dswt)
-plt.show()
+
+plot_histogram_monthly_dswt(time, f_dswt)
 
 # --------------------------------------------------------
 # Interactive plots to check DSWT detection

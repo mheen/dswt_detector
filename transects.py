@@ -1,3 +1,4 @@
+from ocean_model_data import select_roms_transect
 from tools.roms import get_eta_xi_along_transect, find_eta_xi_covering_lon_lat_box
 from tools.coordinates import get_bearing_between_points
 from tools import log
@@ -151,26 +152,56 @@ def generate_transects_json_file(ds:xr.Dataset, output_path:str):
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(transects, f, ensure_ascii=False, indent=4)
 
-def get_transects_dict_from_json(transects_file:str) -> list[dict]:
+def get_transects_dict_from_json(transects_file:str) -> dict:
 
     with open(transects_file, 'r') as f:
         all_transects = json.load(f)
     transect_names = list(all_transects.keys())
     
-    transects = []
+    transects = {}
     for i in range(len(transect_names)):
         lon_land = all_transects[transect_names[i]]['lon_land']
         lat_land = all_transects[transect_names[i]]['lat_land']
         lon_ocean = all_transects[transect_names[i]]['lon_ocean']
         lat_ocean = all_transects[transect_names[i]]['lat_ocean']
        
-        transect = {'name': transect_names[i],
-                    'lon_land': lon_land, 'lat_land': lat_land,
-                    'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
-
-        transects.append(transect)
+        transects[transect_names[i]] = {'lon_land': lon_land, 'lat_land': lat_land,
+                                        'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
         
     return transects
+
+def get_transects_in_lon_lat_range(transects_file:str,
+                                   lon_range:list[float],
+                                   lat_range:list[float]) -> dict:
+    
+    all_transects = get_transects_dict_from_json(transects_file)
+    if lon_range is not None and lat_range is not None:
+        transects = {}
+        for t in list(all_transects.keys()):
+            l_lon_land = np.logical_and(lon_range[0] <= all_transects[t]['lon_land'], all_transects[t]['lon_land'] <= lon_range[1])
+            l_lon_ocean = np.logical_and(lon_range[0] <= all_transects[t]['lon_ocean'], all_transects[t]['lon_ocean'] <= lon_range[1])
+            l_lon = np.logical_and(l_lon_land, l_lon_ocean)
+            
+            l_lat_land = np.logical_and(lat_range[0] <= all_transects[t]['lat_land'], all_transects[t]['lat_land'] <= lat_range[1])
+            l_lat_ocean = np.logical_and(lat_range[0] <= all_transects[t]['lat_ocean'], all_transects[t]['lat_ocean'] <= lat_range[1])
+            l_lat = np.logical_and(l_lat_land, l_lat_ocean)
+            
+            l_range = np.logical_and(l_lon, l_lat)
+            
+            if l_range == True:
+                transects[t] = all_transects[t]
+            else:
+                continue
+    
+    return transects
+
+def get_specific_transect_data(roms_ds:xr.Dataset, transects_file:str, transect_name:str) -> xr.Dataset:
+    transects = get_transects_dict_from_json(transects_file)
+    transect = next(item for item in transects if item['name']==transect_name)
+    
+    transect_ds = select_roms_transect(roms_ds, transect['lon_land'], transect['lat_land'],
+                                       transect['lon_ocean'], transect['lat_ocean'])
+    return transect_ds
     
 # add plotting function to check transects?
 
