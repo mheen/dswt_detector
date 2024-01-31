@@ -195,9 +195,8 @@ def get_transects_in_lon_lat_range(transects_file:str,
     
     return transects
 
-def get_specific_transect_data(roms_ds:xr.Dataset, transects_file:str, transect_name:str) -> xr.Dataset:
-    transects = get_transects_dict_from_json(transects_file)
-    transect = next(item for item in transects if item['name']==transect_name)
+def get_specific_transect_data(roms_ds:xr.Dataset, transects:dict, transect_name:str) -> xr.Dataset:
+    transect = next(transects[item] for item in transects if item==transect_name)
     
     transect_ds = select_roms_transect(roms_ds, transect['lon_land'], transect['lat_land'],
                                        transect['lon_ocean'], transect['lat_ocean'])
