@@ -1,5 +1,5 @@
 from ocean_model_data import select_input_files, load_roms_data, select_roms_subset, select_roms_transect
-from generate_transects import get_transects_dict_from_json
+from transects import get_transects_dict_from_json
 from tools.dswt_detection import determine_dswt_along_multiple_transects, calculate_mean_dswt_along_all_transects
 from tools import log
 import numpy as np

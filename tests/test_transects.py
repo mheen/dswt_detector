@@ -6,9 +6,9 @@ import pytest
 import xarray as xr
 import numpy as np
 import shapely
-from generate_transects import convert_land_mask_to_polygons, get_largest_land_polygon, get_land_polygon
-from generate_transects import get_continental_shelf_points, calculate_perpendicular_angles_to_shelf_points
-from generate_transects import find_closest_land_point_at_angle
+from transects import convert_land_mask_to_polygons, get_largest_land_polygon, get_land_polygon
+from transects import get_continental_shelf_points, calculate_perpendicular_angles_to_shelf_points
+from transects import find_closest_land_point_at_angle
 
 import matplotlib.pyplot as plt
 

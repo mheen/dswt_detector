@@ -143,6 +143,7 @@ def generate_transects_json_file(ds:xr.Dataset, output_path:str):
     for i in range(len(shelf_lons)):
         lon_land, lat_land = find_closest_land_point_at_angle(shelf_lons[i], shelf_lats[i], angles[i], land_polygon)
         if np.isnan(lon_land) or np.isnan(lat_land):
+            log.info(f'No land point found for shelf point: {shelf_lons[i], shelf_lats[i]}')
             continue
         transects[f't{i}'] = {'lon_land': lon_land, 'lat_land': lat_land, 'lon_ocean': shelf_lons[i], 'lat_ocean': shelf_lats[i]}
     
