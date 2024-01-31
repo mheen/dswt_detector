@@ -5,7 +5,7 @@ from gui_tools import plot_dswt_maps_transects
 from plot_tools.basic_timeseries import plot_histogram_monthly_dswt
 
 from tools import log
-from tools.files import get_dir_from_json
+from tools.files import get_dir_from_json, create_dir_if_does_not_exist
 import os
 import numpy as np
 from datetime import datetime
@@ -25,10 +25,12 @@ grid_file = f'{main_input_dir}grid.nc'
 
 files_contain = f'{model}_' # set to None if not needed
 
-transects_dir = 'transects/'
+transects_dir = 'input/transects/'
+create_dir_if_does_not_exist(transects_dir)
 
 # --- Output file info
 output_dir = 'output/'
+create_dir_if_does_not_exist(output_dir)
 
 # --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
