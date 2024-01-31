@@ -76,10 +76,10 @@ def get_vmin_vmax(vmin:float, vmax:float, variable:str, roms_ds:xr.Dataset) -> t
             vmax = np.round(np.nanmin(roms_ds[variable].values), 1)
     return vmin, vmax
 
-def plot_dswt_maps_transects(roms_ds:xr.Dataset, transects_file:str,
+def plot_dswt_maps_transects(roms_ds:xr.Dataset,
                              transects_dswt:dict,
                              variable='density', vmin=None, vmax=None, cmap='RdYlBu_r',
-                             t_interval=1, transect_interval=2,
+                             t_interval=1, transect_interval=4,
                              lon_range=None, lat_range=None) -> plt.axes:
 
     if variable not in roms_ds.variables:
