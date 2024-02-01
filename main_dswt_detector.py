@@ -1,7 +1,6 @@
 from ocean_model_data import load_roms_data, select_roms_subset, select_input_files
 from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
 from tools.dswt_detection import calculate_mean_dswt_along_all_transects
-from gui_tools import plot_dswt_maps_transects
 from plot_tools.basic_timeseries import plot_histogram_monthly_dswt
 
 from tools import log
@@ -147,12 +146,3 @@ def calculate_monthly_mean_dswt_fraction(input_path:str) -> tuple[np.ndarray[dat
 time, f_dswt = calculate_monthly_mean_dswt_fraction(output_file)
 
 plot_histogram_monthly_dswt(time, f_dswt)
-
-# --------------------------------------------------------
-# Interactive plots to check DSWT detection
-# --------------------------------------------------------
-# # --- Check DSWT using interactive map and transect plotter
-# # Use keyboard arrows to cycle through time
-# # Use mouse to click on transects to plot transect data
-# plot_dswt_maps_transects(ds, transects_file, l_dswt, transect_interval=5,
-#                          lon_range=lon_range, lat_range=lat_range)
