@@ -18,8 +18,8 @@ import os
 # --------------------------------------------------------
 # User input
 # --------------------------------------------------------
-n_files_to_check = 2
-n_transects_per_file_to_check = 1
+n_files_to_check = 1
+n_transects_per_file_to_check = 2
 
 year = 2017
 model = 'cwa'
@@ -33,8 +33,7 @@ transects_file = f'input/transects/{model}_transects.json'
 lon_range = [114.0, 116.0]
 lat_range = [-33.0, -31.0]
 
-output_dir = 'performance_tests/output/'
-output_file = f'{output_dir}dswt_comparison_{model}_{year}_{date.today().strftime("%d-%m-%Y")}.csv'
+output_file = f'performance_tests/performance_comparison.csv'
 
 # --------------------------------------------------------
 # Randomly select file and transect and get user DSWT
@@ -44,41 +43,49 @@ transect_names = list(transects.keys())
 
 input_files = select_input_files(input_dir, file_contains=files_contain)
 
-description = []
+filenames = []
+transect_headers = []
 manual_dswt = []
 algorithm_dswt = []
 for i in range(n_files_to_check):
     input_path = random.choice(input_files)
+    filename = os.path.splitext(os.path.split(input_path)[1])[0]
     roms_ds = load_roms_data(input_path, grid_file=grid_file)
     for j in range(n_transects_per_file_to_check):
         transect_name = random.choice(transect_names)
+        
+        # don't select transect again if it is already in the output file
+        if os.path.exists(output_file):
+            df_old = pd.read_csv(output_file)
+            df_file = df_old.loc[df_old['filename'] == filename]
+            if not df_file.empty:
+                while transect_name in df_file['transect'].values:
+                    transect_name = random.choice(transect_names)
+
         transect_ds = get_specific_transect_data(roms_ds, transects, transect_name)
+        plot_dswt_check(roms_ds, transect_ds, 0, lon_range, lat_range, None, None)
         
-        plot_dswt_check(roms_ds, transect_ds, lon_range, lat_range, None, None)
-        
-        description.append(f'{os.path.splitext(os.path.split(input_path)[1])[0]}_{transect_name}')
+        filenames.append(filename)
+        transect_headers.append(transect_name)
         
         manual_input = input('DSWT True/False: ')
         manual_dswt.append(True if manual_input == 'True' else False)
         l_dswt = determine_dswt_along_transect(transect_ds)
         algorithm_dswt.append(l_dswt[0])
 
-description = np.array(description)
+filenames = np.array(filenames)
+transect_headers = np.array(transect_headers)
 manual_dswt = np.array(manual_dswt)
 algorithm_dswt = np.array(algorithm_dswt)
         
 # --------------------------------------------------------
-# Compare manual and algorithm DSWT
+# Append manual and algorithm DSWT result to file
 # --------------------------------------------------------
 # --- Write to file
-df = pd.DataFrame(np.array([description, manual_dswt, algorithm_dswt]).transpose(), columns=['file_transect', 'manual_dswt', 'algorithm_dswt'])
-create_dir_if_does_not_exist(output_dir)
-df.to_csv(output_file, index=False)
+df = pd.DataFrame(np.array([filenames, transect_headers, manual_dswt, algorithm_dswt]).transpose(), columns=['filename', 'transect', 'manual_dswt', 'algorithm_dswt'])
+
+if os.path.exists(output_file):
+    df.to_csv(output_file, mode='a', header=False, index=False)
+else:
+    df.to_csv(output_file, index=False)
 log.info(f'Wrote performance to file: {output_file}')
-
-# --- Print overall performance
-overall_performance = np.round(np.sum(algorithm_dswt == manual_dswt)/len(description)*100, 1)
-
-print(f'''Algorithm DSWT detection agreed with manual detection {overall_performance}% of the time
-      based on {n_files_to_check} randomly selected files with {n_transects_per_file_to_check} randomly
-      selected transects per file (so for {n_files_to_check*n_transects_per_file_to_check} random tests).''')
