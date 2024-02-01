@@ -74,6 +74,8 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
     n_depth_layers = int(np.ceil(n_z_layers*drhodz_depth_p))
     l_drhodz = np.any(transect_ds.vertical_density_gradient[:, 0:n_depth_layers, :] > minimum_drhodz, axis=1) # [time, distance] (check for any along depth)
     n_used_cells = sum(~np.isnan(transect_ds.h))
+    drhodz_max = []
+    drhodz_cells = []
     condition2 = []
     for t in range(len(transect_ds.ocean_time)):
         consecutive_true_lengths = [len(list(v)) for k, v in groupby(l_drhodz.values[t, :]) if k == True]
@@ -81,13 +83,15 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
             n_consecutive_cells = max(consecutive_true_lengths)
         else:
             n_consecutive_cells = 0
+        drhodz_cells.append(n_consecutive_cells/n_used_cells)
+        drhodz_max.append(np.nanmax(transect_ds.vertical_density_gradient[t, 0:n_depth_layers, :]))
         condition2.append((n_consecutive_cells/n_used_cells) >= minimum_p_cells)
     condition2 = np.array(condition2)
     
     # DSWT along a transect when both condition 1 and condition 2 hold
     l_dswt = np.logical_and(condition1, condition2)
     
-    return l_dswt
+    return l_dswt, condition1, condition2, drhodz_max, drhodz_cells
 
 def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict,
                                             minimum_drhodz=minimum_drhodz_default,
@@ -105,7 +109,7 @@ def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict,
         lat_ocean = transects[transect_name]['lat_ocean']
         
         transect_ds = select_roms_transect(roms_ds, lon_land, lat_land, lon_ocean, lat_ocean)
-        l_dswt = determine_dswt_along_transect(transect_ds, minimum_drhodz=minimum_drhodz,
+        l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, minimum_drhodz=minimum_drhodz,
                                                  minimum_p_cells=minimum_p_cells, drhodz_depth_p=drhodz_depth_p,
                                                  filter_depth=filter_depth)
         
