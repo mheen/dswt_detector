@@ -112,7 +112,7 @@ def plot_basic_map(ax:plt.axes, lon_range=None, lat_range=None,
     if parallels is None:
         parallels = np.arange(-46.0, -24.0, 4.0)
         
-    ax.add_feature(cfeature.LAND)
+    ax.add_feature(cfeature.LAND, edgecolor='k', facecolor='#d2d2d2')
     ax.add_feature(cfeature.COASTLINE)
     
     ax = add_grid(ax, meridians, parallels, xmarkers, ymarkers, draw_grid)
