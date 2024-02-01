@@ -55,37 +55,28 @@ def plot_transect(ax:plt.axes, transect_ds:xr.Dataset, variable:str, t_dswt:int,
     
     return ax, c
 
-def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
-              lon_range:list, lat_range:list,
-              parallels:np.ndarray, meridians:np.ndarray) -> plt.figure:
+def transects_plot(transect_ds:xr.Dataset, t_dswt:int,
+                   fig:plt.figure, n_rows:int, n_cols:int, n_start:int,
+                   set_vlim=True) -> plt.figure:
     
-    time_str = pd.to_datetime(roms_ds.ocean_time.values[0]).strftime('%b')
-    vmin_density = all_plot_ranges[time_str]['vmin_density']
-    vmax_density = all_plot_ranges[time_str]['vmax_density']
-    vmin_temp = all_plot_ranges[time_str]['vmin_temp']
-    vmax_temp = all_plot_ranges[time_str]['vmax_temp']
-    vmin_salt = all_plot_ranges[time_str]['vmin_salt']
-    vmax_salt = all_plot_ranges[time_str]['vmax_salt']
-    
-    fig = plt.figure(figsize=(5, 8))
-    plt.subplots_adjust(hspace=0.2)
-    # --- Surface density map
-    ax1 = plt.subplot(6, 2, (1, 3), projection=ccrs.PlateCarree())
-    ax1, _ = plot_map(ax1, roms_ds, transect_ds, roms_ds.density.values[t_dswt, -1, :, :],
-                      lon_range, lat_range, parallels, meridians,
-                      vmin_density, vmax_density, cmap_density)
-    ax1 = add_subtitle(ax1, '(a) Surface density')
-    
-    # --- Bottom density map
-    ax2 = plt.subplot(6, 2, (2, 4), projection=ccrs.PlateCarree())
-    ax2, _ = plot_map(ax2, roms_ds, transect_ds, roms_ds.density.values[t_dswt, 0, :, :],
-                      lon_range, lat_range, parallels, meridians,
-                      vmin_density, vmax_density, cmap_density, transect_color='#cccccc')
-    ax2 = add_subtitle(ax2, '(b) Bottom density')
-    ax2.set_yticklabels([])
-    
+    if set_vlim == True:
+        time_str = pd.to_datetime(transect_ds.ocean_time.values[0]).strftime('%b')
+        vmin_density = all_plot_ranges[time_str]['vmin_density']
+        vmax_density = all_plot_ranges[time_str]['vmax_density']
+        vmin_temp = all_plot_ranges[time_str]['vmin_temp']
+        vmax_temp = all_plot_ranges[time_str]['vmax_temp']
+        vmin_salt = all_plot_ranges[time_str]['vmin_salt']
+        vmax_salt = all_plot_ranges[time_str]['vmax_salt']
+    else:
+        vmin_density = None
+        vmax_density = None
+        vmin_temp = None
+        vmax_temp = None
+        vmin_salt = None
+        vmax_salt = None
+      
     # --- Transect density
-    ax3 = plt.subplot(6, 2, (5, 6))
+    ax3 = plt.subplot(n_rows, n_cols, (n_start, n_start+1))
     ax3, c3 = plot_transect(ax3, transect_ds, 'density', t_dswt,
                             vmin_density, vmax_density, cmap_density)
     ax3.set_xticks([])
@@ -93,15 +84,14 @@ def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
     ax3 = add_subtitle(ax3, f'(c) Density along transect', location='lower left')
     
     # adjust location and add colorbar
-    l2, b2, w2, h2 = ax2.get_position().bounds
     l3, b3, w3, h3 = ax3.get_position().bounds
     ax3.set_position([l3, b3-0.02, w3, h3])
-    cbax3 = fig.add_axes([l3+w3+0.02, b3-0.02, 0.02, h3+h2+0.04])
+    cbax3 = fig.add_axes([l3+w3+0.02, b3-0.02, 0.02, h3])
     cbar3 = plt.colorbar(c3, cax=cbax3)
     cbar3.set_label('Density (kg/m$^3$)')
     
     # --- Transect temperature
-    ax4 = plt.subplot(6, 2, (7, 8))
+    ax4 = plt.subplot(n_rows, n_cols, (n_start+2, n_start+3))
     ax4, c4 = plot_transect(ax4, transect_ds, 'temp', t_dswt,
                             vmin_temp, vmax_temp, cmap_temp)
     ax4.set_xlabel('')
@@ -117,7 +107,7 @@ def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
     cbar4.set_label('Temperature ($^o$C)', fontsize=8)
     
     # --- Transect salinity
-    ax5 = plt.subplot(6, 2, (9, 10))
+    ax5 = plt.subplot(n_rows, n_cols, (n_start+4, n_start+5))
     ax5, c5 = plot_transect(ax5, transect_ds, 'salt', t_dswt,
                             vmin_salt, vmax_salt, cmap_salt)
     ax5.set_xlabel('')
@@ -131,8 +121,55 @@ def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
     cbar5 = plt.colorbar(c5, cax=cbax5)
     cbar5.set_label('Salinity (ppt)', fontsize=8)
     
+    # title
+    plt.suptitle(f'{pd.to_datetime(transect_ds.ocean_time[0].values).strftime("%d-%m-%Y %H:%M")}', x=0.5, y=0.93)    
+    
+    return fig
+
+def plot_dswt_check(transect_ds:xr.Dataset, t_dswt:int):
+    
+    fig = plt.figure(figsize=(6, 8))
+    n_rows = 3
+    n_cols = 2
+    n_start = 1
+    fig = transects_plot(transect_ds, t_dswt, fig, n_rows, n_cols, n_start, set_vlim=False)
+    plt.show()
+
+def plot_dswt_scenario(roms_ds:xr.Dataset, transect_ds:xr.Dataset, l_dswt:list[bool], t_dswt:int,
+                       wind_vel:float, wind_dir:float,
+                       lon_range:list, lat_range:list,
+                       parallels:np.array, meridians:np.array,
+                       output_path=None, show=True):
+    
+    time_str = pd.to_datetime(transect_ds.ocean_time.values[0]).strftime('%b')
+    vmin_density = all_plot_ranges[time_str]['vmin_density']
+    vmax_density = all_plot_ranges[time_str]['vmax_density']
+    
+    fig = plt.figure(figsize=(5, 8))
+    plt.subplots_adjust(hspace=0.2)
+    
+    n_rows = 6
+    n_cols = 2
+    
+    # --- Surface density map
+    ax1 = plt.subplot(n_rows, n_cols, (1, 3), projection=ccrs.PlateCarree())
+    ax1, _ = plot_map(ax1, roms_ds, transect_ds, roms_ds.density.values[t_dswt, -1, :, :],
+                      lon_range, lat_range, parallels, meridians,
+                      vmin_density, vmax_density, cmap_density)
+    ax1 = add_subtitle(ax1, '(a) Surface density')
+    
+    # --- Bottom density map
+    ax2 = plt.subplot(6, 2, (2, 4), projection=ccrs.PlateCarree())
+    ax2, _ = plot_map(ax2, roms_ds, transect_ds, roms_ds.density.values[t_dswt, 0, :, :],
+                      lon_range, lat_range, parallels, meridians,
+                      vmin_density, vmax_density, cmap_density, transect_color='#cccccc')
+    ax2 = add_subtitle(ax2, '(b) Bottom density')
+    ax2.set_yticklabels([])
+    
+    fig = transects_plot(transect_ds, t_dswt, fig, n_rows, n_cols, 5)
+    
     # --- Transect vertical density gradient
-    ax6 = plt.subplot(6, 2, (11, 12))
+    ax6 = plt.subplot(n_rows, n_cols, (11, 12))
     ax6, c6 = plot_transect(ax6, transect_ds, 'vertical_density_gradient', t_dswt,
                             vmin_drhodz, vmax_drhodz, cmap_drhodz)
     ax6.set_xlabel('Distance (m)')
@@ -144,26 +181,6 @@ def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
     cbax6 = fig.add_axes([l6+w6+0.02, b6-0.02, 0.02, h6])
     cbar6 = plt.colorbar(c6, cax=cbax6)
     cbar6.set_label('Vertical\ndensity gradient\n(kg/m$^3$/m)', fontsize=8)
-    
-    # title
-    plt.suptitle(f'{pd.to_datetime(roms_ds.ocean_time[0].values).strftime("%d-%m-%Y %H:%M")}', x=0.5, y=0.93)    
-    
-    return fig
-
-def plot_dswt_check(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
-                    lon_range:list, lat_range:list,
-                    parallels:np.array, meridians:np.array):
-    fig = base_plot(roms_ds, transect_ds, t_dswt, lon_range, lat_range, parallels, meridians)
-    plt.show()
-
-def plot_dswt_scenario(roms_ds:xr.Dataset, transect_ds:xr.Dataset, l_dswt:list[bool], t_dswt:int,
-                       wind_vel:float, wind_dir:float,
-                       lon_range:list, lat_range:list,
-                       parallels:np.array, meridians:np.array,
-                       output_path=None, show=True):
-    
-    fig = base_plot(roms_ds, transect_ds, t_dswt,
-                    lon_range, lat_range, parallels, meridians)
     
     # wind arrow
     ax1 = fig.axes[0]
