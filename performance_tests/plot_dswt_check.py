@@ -7,14 +7,30 @@ from plot_tools.general import add_subtitle
 
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+import cmocean as cm
 
 import xarray as xr
 import numpy as np
 import pandas as pd
+import json
+
+cmap_density = cm.cm.thermal_r
+cmap_temp = 'RdYlBu_r'
+cmap_salt = cm.cm.haline
+
+vmin_drhodz = 0.0
+vmax_drhodz = 0.04
+cmap_drhodz = 'bone_r'
+
+wind_color = '#f1f5f9'
+land_color = '#d2d2d2'
+
+with open('input/plot_settings.json', 'r') as f:
+    all_plot_ranges = json.load(f)
 
 def plot_map(ax:plt.axes, roms_ds:xr.Dataset, transect_ds:xr.Dataset, values:np.ndarray,
              lon_range:list, lat_range:list, meridians:np.ndarray, parallels:np.ndarray,
-             vmin:float, vmax:float, cmap:str) -> tuple:
+             vmin:float, vmax:float, cmap:str, transect_color='k') -> tuple:
     
     ax = plot_basic_map(ax, lon_range=lon_range, lat_range=lat_range,
                          meridians=meridians, parallels=parallels)
@@ -22,14 +38,14 @@ def plot_map(ax:plt.axes, roms_ds:xr.Dataset, transect_ds:xr.Dataset, values:np.
                         lon_range=lon_range, lat_range=lat_range, ax=ax, clevels=[100, 200])
     c = ax.pcolormesh(roms_ds.lon_rho.values, roms_ds.lat_rho.values, values,
                         vmin=vmin, vmax=vmax, cmap=cmap)
-    ax.plot(transect_ds.lon_rho.values, transect_ds.lat_rho.values, '-k')
+    ax.plot(transect_ds.lon_rho.values, transect_ds.lat_rho.values, '-', color=transect_color)
     
     return ax, c
 
 def plot_transect(ax:plt.axes, transect_ds:xr.Dataset, variable:str, t_dswt:int,
                   vmin:float, vmax:float, cmap:str) -> tuple:
     c = transect_ds[variable][t_dswt, :, :].plot(x='distance', y='z_rho', vmin=vmin, vmax=vmax, cmap=cmap, add_colorbar=False)
-    ax.fill_between(transect_ds.distance.values, -210, -transect_ds.h.values, color='#989898', edgecolor='k')
+    ax.fill_between(transect_ds.distance.values, -210, -transect_ds.h.values, color=land_color, edgecolor='k')
     ax.set_xlim([transect_ds.distance.values[0], transect_ds.distance.values[-1]])
     ax.set_ylim([-200, 0])
     ax.set_title('')
@@ -39,16 +55,19 @@ def plot_transect(ax:plt.axes, transect_ds:xr.Dataset, variable:str, t_dswt:int,
     
     return ax, c
 
-def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset,
+def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
               lon_range:list, lat_range:list,
-              parallels:np.ndarray, meridians:np.ndarray,
-              t_dswt=0,
-              vmin_density=1024.8, vmax_density=1025.4, cmap_density='RdYlBu_r',
-              vmin_temp=20., vmax_temp=22., cmap_temp='RdYlBu_r',
-              vmin_salt=34.8, vmax_salt=35.8, cmap_salt='RdYlBu_r',
-              vmin_drhodz=0.0, vmax_drhodz=0.05, cmap_drhodz='RdYlBu_r') -> plt.figure:
+              parallels:np.ndarray, meridians:np.ndarray) -> plt.figure:
     
-    fig = plt.figure(figsize=(5, 9))
+    time_str = pd.to_datetime(roms_ds.ocean_time.values[0]).strftime('%b')
+    vmin_density = all_plot_ranges[time_str]['vmin_density']
+    vmax_density = all_plot_ranges[time_str]['vmax_density']
+    vmin_temp = all_plot_ranges[time_str]['vmin_temp']
+    vmax_temp = all_plot_ranges[time_str]['vmax_temp']
+    vmin_salt = all_plot_ranges[time_str]['vmin_salt']
+    vmax_salt = all_plot_ranges[time_str]['vmax_salt']
+    
+    fig = plt.figure(figsize=(5, 8))
     plt.subplots_adjust(hspace=0.2)
     # --- Surface density map
     ax1 = plt.subplot(6, 2, (1, 3), projection=ccrs.PlateCarree())
@@ -61,7 +80,7 @@ def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset,
     ax2 = plt.subplot(6, 2, (2, 4), projection=ccrs.PlateCarree())
     ax2, _ = plot_map(ax2, roms_ds, transect_ds, roms_ds.density.values[t_dswt, 0, :, :],
                       lon_range, lat_range, parallels, meridians,
-                      vmin_density, vmax_density, cmap_density)
+                      vmin_density, vmax_density, cmap_density, transect_color='#cccccc')
     ax2 = add_subtitle(ax2, '(b) Bottom density')
     ax2.set_yticklabels([])
     
@@ -126,36 +145,31 @@ def base_plot(roms_ds:xr.Dataset, transect_ds:xr.Dataset,
     cbar6 = plt.colorbar(c6, cax=cbax6)
     cbar6.set_label('Vertical\ndensity gradient\n(kg/m$^3$/m)', fontsize=8)
     
+    # title
+    plt.suptitle(f'{pd.to_datetime(roms_ds.ocean_time[0].values).strftime("%d-%m-%Y %H:%M")}', x=0.5, y=0.93)    
+    
     return fig
 
-def plot_dswt_check(roms_ds:xr.Dataset, transect_ds:xr.Dataset,
+def plot_dswt_check(roms_ds:xr.Dataset, transect_ds:xr.Dataset, t_dswt:int,
                     lon_range:list, lat_range:list,
                     parallels:np.array, meridians:np.array):
-    fig = base_plot(roms_ds, transect_ds, lon_range, lat_range, parallels, meridians)
+    fig = base_plot(roms_ds, transect_ds, t_dswt, lon_range, lat_range, parallels, meridians)
     plt.show()
 
-def plot_dswt_scenario(roms_ds:xr.Dataset, transect_ds:xr.Dataset, l_dswt:list[bool],
+def plot_dswt_scenario(roms_ds:xr.Dataset, transect_ds:xr.Dataset, l_dswt:list[bool], t_dswt:int,
+                       wind_vel:float, wind_dir:float,
                        lon_range:list, lat_range:list,
                        parallels:np.array, meridians:np.array,
-                       wind_vel:float, wind_dir:float, t_dswt=0,
-                       vmin_density=1024.8, vmax_density=1025.4, cmap_density='RdYlBu_r',
-                       vmin_temp=20., vmax_temp=22., cmap_temp='RdYlBu_r',
-                       vmin_salt=34.8, vmax_salt=35.8, cmap_salt='RdYlBu_r',
-                       vmin_drhodz=0.0, vmax_drhodz=0.05, cmap_drhodz='RdYlBu_r',
                        output_path=None, show=True):
     
     fig = base_plot(roms_ds, transect_ds, t_dswt,
-                    lon_range, lat_range, parallels, meridians,
-                    vmin_density=vmin_density, vmax_density=vmax_density, cmap_density=cmap_density,
-                    vmin_temp=vmin_temp, vmax_temp=vmax_temp, cmap_temp=cmap_temp,
-                    vmin_salt=vmin_salt, vmax_salt=vmax_salt, cmap_salt=cmap_salt,
-                    vmin_drhodz=vmin_drhodz, vmax_drhodz=vmax_drhodz, cmap_drhodz=cmap_drhodz)
+                    lon_range, lat_range, parallels, meridians)
     
     # wind arrow
     ax1 = fig.axes[0]
     l1, b1, w1, h1 = ax1.get_position().bounds
     ax7 = fig.add_axes([l1+0.07, b1+0.5*h1, w1/5, h1/5])
-    ax7.text(0, 0, f'{np.round(wind_vel, 0)} m/s', rotation=270-wind_dir, bbox=dict(boxstyle='rarrow', fc='#b0cbb2', ec='k'), fontsize=8)
+    ax7.text(0, 0, f'{np.round(wind_vel, 0)} m/s', rotation=270-wind_dir, bbox=dict(boxstyle='rarrow', fc=wind_color, ec='k'), fontsize=8)
     ax7.set_axis_off()
     
     # title
