@@ -44,15 +44,6 @@ transect_names = list(transects.keys())
 
 input_files = select_input_files(input_dir, file_contains=files_contain)
 
-filenames = []
-times = []
-transect_headers = []
-manual_dswt = []
-algorithm_dswt = []
-algorithm_condition1 = []
-algorithm_condition2 = []
-algorithm_drhodz_max = []
-algorithm_drhodz_cells = []
 for i in range(n_files_to_check):
     input_path = random.choice(input_files)
     filename = os.path.splitext(os.path.split(input_path)[1])[0]
@@ -69,6 +60,7 @@ for i in range(n_files_to_check):
             t = random.choice(t_array)
             
         t_previous = t
+        time = pd.to_datetime(roms_ds.ocean_time.values[t]).strftime('%Y%m%d%H%M')
         
         for j in range(n_transects_per_file_to_check):
             transect_name = random.choice(transect_names)
@@ -84,40 +76,21 @@ for i in range(n_files_to_check):
             transect_ds = get_specific_transect_data(roms_ds, transects, transect_name)
             plot_dswt_check(transect_ds, t)
             
-            filenames.append(filename)
-            times.append(pd.to_datetime(roms_ds.ocean_time.values[t]).strftime('%Y%m%d%H%M'))
-            transect_headers.append(transect_name)
             
             manual_input = input('DSWT True/False (t/f): ')
-            manual_dswt.append(True if manual_input.lower().startswith('t') else False)
+            manual_dswt = True if manual_input.lower().startswith('t') else False
             l_dswt, condition1, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds)
-            algorithm_dswt.append(l_dswt[0])
-            algorithm_condition1.append(condition1[0])
-            algorithm_condition2.append(condition2[0])
-            algorithm_drhodz_max.append(drhodz_max[0])
-            algorithm_drhodz_cells.append(drhodz_cells[0])
+            
+            data = np.array([filename, time, transect_name, manual_dswt, l_dswt[t],
+                             condition1[t], condition2[t], drhodz_max[t], drhodz_cells[t]])
+            df = pd.DataFrame(np.expand_dims(data, 0),
+                              columns=['filename', 'time', 'transect', 'manual_dswt', 'algorithm_dswt',
+                                       'negative_drhodx', 'drhodz_condition', 'drhodz_max', 'drhodz_p_cells'])
 
-filenames = np.array(filenames)
-times = np.array(times)
-transect_headers = np.array(transect_headers)
-manual_dswt = np.array(manual_dswt)
-algorithm_dswt = np.array(algorithm_dswt)
-algorithm_condition1 = np.array(algorithm_condition1)
-algorithm_condition2 = np.array(algorithm_condition2)
-algorithm_drhodz_max = np.array(algorithm_drhodz_max)
-algorithm_drhodz_cells = np.array(algorithm_drhodz_cells)
-        
-# --------------------------------------------------------
-# Append manual and algorithm DSWT result to file
-# --------------------------------------------------------
-# --- Write to file
-df = pd.DataFrame(np.array([filenames, times, transect_headers, manual_dswt, algorithm_dswt,
-                            algorithm_condition1, algorithm_condition2, algorithm_drhodz_max, algorithm_drhodz_cells]).transpose(),
-                  columns=['filename', 'time', 'transect', 'manual_dswt', 'algorithm_dswt',
-                           'negative_drhodx', 'drhodz_condition', 'drhodz_max', 'drhodz_p_cells'])
+            # append to csv file immediately after input
+            if os.path.exists(output_file):
+                df.to_csv(output_file, mode='a', header=False, index=False)
+            else:
+                df.to_csv(output_file, index=False)
 
-if os.path.exists(output_file):
-    df.to_csv(output_file, mode='a', header=False, index=False)
-else:
-    df.to_csv(output_file, index=False)
-log.info(f'Wrote performance to file: {output_file}')
+log.info(f'Done comparing manual and algorithm DSWT, wrote/added results to file: {output_file}')
