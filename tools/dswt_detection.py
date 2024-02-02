@@ -73,7 +73,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
     n_z_layers = len(transect_ds.z_rho)
     n_depth_layers = int(np.ceil(n_z_layers*drhodz_depth_p))
     l_drhodz = np.any(transect_ds.vertical_density_gradient[:, 0:n_depth_layers, :] > minimum_drhodz, axis=1) # [time, distance] (check for any along depth)
-    n_used_cells = sum(~np.isnan(transect_ds.h))
+    n_used_cells = sum(~np.isnan(transect_ds.h.values))
     drhodz_max = []
     drhodz_cells = []
     condition2 = []
