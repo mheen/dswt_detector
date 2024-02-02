@@ -36,23 +36,31 @@ total_transects = n_files*n_transects*n_times
 performance_file = f'performance_tests/{model}_{year}_performance_comparison.csv'
 
 # --- Check performance
-df = pd.read_csv(performance_file)
+def check_performance(performance_file:str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    df = pd.read_csv(performance_file)
 
-manual_dswt = df['manual_dswt'].values
-algorithm_dswt = df['algorithm_dswt'].values
+    manual_dswt = df['manual_dswt'].values
+    algorithm_dswt = df['algorithm_dswt'].values
 
-l_comparison = manual_dswt == algorithm_dswt
-performance = np.sum(l_comparison)/len(manual_dswt)*100
+    l_comparison = manual_dswt == algorithm_dswt
+    performance = np.sum(l_comparison)/len(manual_dswt)*100
 
-p_covered = len(df)/total_transects*100
+    p_covered = len(df)/total_transects*100
 
-log.info(f'Algorithm performance: {np.round(performance, 1)}% accuracy based on {len(df)} tests, which is {np.round(p_covered, 2)}% of all available transects.')
+    log.info(f'Algorithm performance: {np.round(performance, 1)}% accuracy based on {len(df)} tests, which is {np.round(p_covered, 2)}% of all available transects.')
+    
+    df_diff = df.loc[l_comparison == False]
+    
+    return df, df_diff
+
+df, df_diff = check_performance(performance_file)
 
 # --- Write differences to file
-diff_file = f'performance_tests/{model}_{year}_performance_differences.csv'
-df_diff = df.loc[l_comparison == False]
-df_diff.to_csv(diff_file, index=False)
-log.info(f'Wrote differences between manual and algorithm to csv file: {diff_file}')
+def write_differences_to_file(df_diff):
+    diff_file = f'performance_tests/{model}_{year}_performance_differences.csv'
+    
+    df_diff.to_csv(diff_file, index=False)
+    log.info(f'Wrote differences between manual and algorithm to csv file: {diff_file}')
 
 # --- Check differences and change manual input if wanted
 if recheck_differences == True:
@@ -60,7 +68,7 @@ if recheck_differences == True:
     for i in range(len(df_diff)):
         filename = df_diff["filename"].values[i]
         input_path = f'{input_dir}{filename}.nc'
-        time_str = df_diff['time'].values[i]
+        time_str = str(df_diff['time'].values[i])
         transect = df_diff['transect'].values[i]
 
         roms_ds = load_roms_data(input_path, grid_file=grid_file)
@@ -82,4 +90,11 @@ if recheck_differences == True:
     # write performance comparison to file again if any changes
     if changes > 0:
         df.to_csv(performance_file, index=False)
-    
+        
+        # redo performance check if any changes
+        df, df_diff = check_performance(performance_file)
+        write_differences_to_file(df_diff)
+        
+    else:
+        log.info(f'Performance not changed after manual checks of differences')
+        
