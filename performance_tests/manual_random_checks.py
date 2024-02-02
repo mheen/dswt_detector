@@ -18,9 +18,9 @@ import os
 # --------------------------------------------------------
 # User input
 # --------------------------------------------------------
-n_files_to_check = 1
+n_files_to_check = 30
 n_times_to_check = 2
-n_transects_per_file_to_check = 1
+n_transects_per_file_to_check = 5
 
 year = 2017
 model = 'cwa'

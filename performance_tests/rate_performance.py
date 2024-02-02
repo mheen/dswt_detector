@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 
-recheck_differences = True
+recheck_differences = False
 
 year = 2017
 model = 'cwa'
