@@ -122,7 +122,7 @@ def transects_plot(transect_ds:xr.Dataset, t_dswt:int,
     cbar5.set_label('Salinity (ppt)', fontsize=8)
     
     # title
-    plt.suptitle(f'{pd.to_datetime(transect_ds.ocean_time[0].values).strftime("%d-%m-%Y %H:%M")}', x=0.5, y=0.93)    
+    plt.suptitle(f'{pd.to_datetime(transect_ds.ocean_time[t_dswt].values).strftime("%d-%m-%Y %H:%M")}', x=0.5, y=0.93)    
     
     return fig
 
