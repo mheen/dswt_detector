@@ -7,11 +7,12 @@ from ocean_model_data import select_input_files, load_roms_data
 from transects import get_transects_in_lon_lat_range, get_specific_transect_data
 from tools.files import get_dir_from_json
 from tools import log
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import xarray as xr
 
-recheck_differences = False
+recheck_differences = True
 
 year = 2017
 model = 'cwa'
@@ -45,7 +46,7 @@ performance = np.sum(l_comparison)/len(manual_dswt)*100
 
 p_covered = len(df)/total_transects*100
 
-log.info(f'Algorithm performance: {np.round(performance, 1)}% accuracy based on {len(df)} tests, which is {p_covered}% of all available transects.')
+log.info(f'Algorithm performance: {np.round(performance, 1)}% accuracy based on {len(df)} tests, which is {np.round(p_covered, 2)}% of all available transects.')
 
 # --- Write differences to file
 diff_file = f'performance_tests/{model}_{year}_performance_differences.csv'
@@ -53,17 +54,22 @@ df_diff = df.loc[l_comparison == False]
 df_diff.to_csv(diff_file, index=False)
 log.info(f'Wrote differences between manual and algorithm to csv file: {diff_file}')
 
+# --- Check differences and change manual input if wanted
 if recheck_differences == True:
-    # --- Check differences and change manual input if wanted
     changes = 0
     for i in range(len(df_diff)):
         filename = df_diff["filename"].values[i]
         input_path = f'{input_dir}{filename}.nc'
+        time_str = df_diff['time'].values[i]
         transect = df_diff['transect'].values[i]
 
         roms_ds = load_roms_data(input_path, grid_file=grid_file)
+        roms_times = pd.to_datetime(roms_ds.ocean_time.values)
+        time = datetime.strptime(time_str, '%Y%m%d%H%M')
+        t = np.where(roms_times == time)[0][0]
+        
         transect_ds = get_specific_transect_data(roms_ds, transects, transect)
-        plot_dswt_check(transect_ds, 0)
+        plot_dswt_check(transect_ds, t)
         
         manual_input_str = input('DSWT True/False (t/f): ')
         manual_input = True if manual_input_str.lower().startswith('t') else False

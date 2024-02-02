@@ -18,8 +18,9 @@ import os
 # --------------------------------------------------------
 # User input
 # --------------------------------------------------------
-n_files_to_check = 20
-n_transects_per_file_to_check = 3
+n_files_to_check = 1
+n_times_to_check = 2
+n_transects_per_file_to_check = 1
 
 year = 2017
 model = 'cwa'
@@ -44,6 +45,7 @@ transect_names = list(transects.keys())
 input_files = select_input_files(input_dir, file_contains=files_contain)
 
 filenames = []
+times = []
 transect_headers = []
 manual_dswt = []
 algorithm_dswt = []
@@ -55,33 +57,48 @@ for i in range(n_files_to_check):
     input_path = random.choice(input_files)
     filename = os.path.splitext(os.path.split(input_path)[1])[0]
     roms_ds = load_roms_data(input_path, grid_file=grid_file)
-    for j in range(n_transects_per_file_to_check):
-        transect_name = random.choice(transect_names)
+    
+    if len(roms_ds.ocean_time) == 1:
+        n_times_to_check = 1
+    
+    t_array = np.arange(0, len(roms_ds.ocean_time))
+    t_previous = None
+    t = None
+    for k in range(n_times_to_check):
+        while t == t_previous: # don't select same time multiple times
+            t = random.choice(t_array)
+            
+        t_previous = t
         
-        # don't select transect again if it is already in the output file
-        if os.path.exists(output_file):
-            df_old = pd.read_csv(output_file)
-            df_file = df_old.loc[df_old['filename'] == filename]
-            if not df_file.empty:
-                while transect_name in df_file['transect'].values:
-                    transect_name = random.choice(transect_names)
+        for j in range(n_transects_per_file_to_check):
+            transect_name = random.choice(transect_names)
+            
+            # don't select transect again if it is already in the output file
+            if os.path.exists(output_file):
+                df_old = pd.read_csv(output_file)
+                df_file = df_old.loc[df_old['filename'] == filename]
+                if not df_file.empty:
+                    while transect_name in df_file['transect'].values:
+                        transect_name = random.choice(transect_names)
 
-        transect_ds = get_specific_transect_data(roms_ds, transects, transect_name)
-        plot_dswt_check(transect_ds, 0)
-        
-        filenames.append(filename)
-        transect_headers.append(transect_name)
-        
-        manual_input = input('DSWT True/False (t/f): ')
-        manual_dswt.append(True if manual_input.lower().startswith('t') else False)
-        l_dswt, condition1, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds)
-        algorithm_dswt.append(l_dswt[0])
-        algorithm_condition1.append(condition1[0])
-        algorithm_condition2.append(condition2[0])
-        algorithm_drhodz_max.append(drhodz_max[0])
-        algorithm_drhodz_cells.append(drhodz_cells[0])
+            transect_ds = get_specific_transect_data(roms_ds, transects, transect_name)
+            plot_dswt_check(transect_ds, t)
+            
+            filenames.append(filename)
+            times.append(pd.to_datetime(roms_ds.ocean_time.values[t]).strftime('%Y%m%d%H%M'))
+            transect_headers.append(transect_name)
+            
+            manual_input = input('DSWT True/False (t/f): ')
+            manual_dswt.append(True if manual_input.lower().startswith('t') else False)
+            l_dswt, condition1, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds)
+            algorithm_dswt.append(l_dswt[0])
+            algorithm_condition1.append(condition1[0])
+            algorithm_condition2.append(condition2[0])
+            algorithm_drhodz_max.append(drhodz_max[0])
+            algorithm_drhodz_cells.append(drhodz_cells[0])
 
 filenames = np.array(filenames)
+times = np.array(times)
 transect_headers = np.array(transect_headers)
 manual_dswt = np.array(manual_dswt)
 algorithm_dswt = np.array(algorithm_dswt)
@@ -94,9 +111,9 @@ algorithm_drhodz_cells = np.array(algorithm_drhodz_cells)
 # Append manual and algorithm DSWT result to file
 # --------------------------------------------------------
 # --- Write to file
-df = pd.DataFrame(np.array([filenames, transect_headers, manual_dswt, algorithm_dswt,
+df = pd.DataFrame(np.array([filenames, times, transect_headers, manual_dswt, algorithm_dswt,
                             algorithm_condition1, algorithm_condition2, algorithm_drhodz_max, algorithm_drhodz_cells]).transpose(),
-                  columns=['filename', 'transect', 'manual_dswt', 'algorithm_dswt',
+                  columns=['filename', 'time', 'transect', 'manual_dswt', 'algorithm_dswt',
                            'negative_drhodx', 'drhodz_condition', 'drhodz_max', 'drhodz_p_cells'])
 
 if os.path.exists(output_file):
