@@ -51,6 +51,11 @@ def check_performance(performance_file:str) -> tuple[pd.DataFrame, pd.DataFrame]
     
     df_diff = df.loc[l_comparison == False]
     
+    false_positives = np.sum(df_diff['manual_dswt'] == False)
+    false_negatives = np.sum(df_diff['manual_dswt'] == True)
+    
+    log.info(f'False positives: {false_positives/len(df_diff)*100}% - False negatives: {false_negatives/len(df_diff)*100}% of mistakenly detected DSWT.')
+    
     return df, df_diff
 
 df, df_diff = check_performance(performance_file)
@@ -61,6 +66,8 @@ def write_differences_to_file(df_diff):
     
     df_diff.to_csv(diff_file, index=False)
     log.info(f'Wrote differences between manual and algorithm to csv file: {diff_file}')
+
+write_differences_to_file(df_diff)
 
 # --- Check differences and change manual input if wanted
 if recheck_differences == True:
