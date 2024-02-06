@@ -14,6 +14,7 @@ import random
 import pandas as pd
 import numpy as np
 import os
+import glob
 
 # --------------------------------------------------------
 # User input
@@ -24,6 +25,9 @@ n_transects_per_file_to_check = 5
 
 year = 2017
 model = 'cwa'
+focus_months = [5, 6, 7] # set to None for full year,
+# allowing this option to focus more on DSWT times
+# rather than confirming obvious False values
 
 input_dir = f'{get_dir_from_json("cwa-roms")}{year}/'
 files_contain = f'{model}_'
@@ -42,7 +46,13 @@ output_file = f'performance_tests/{model}_{year}_performance_comparison.csv'
 transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
 transect_names = list(transects.keys())
 
-input_files = select_input_files(input_dir, file_contains=files_contain)
+if focus_months is not None:
+    input_files = []
+    for m in focus_months:
+        m_str = str(m).zfill(2)
+        input_files = input_files + glob.glob(f'{input_dir}*{files_contain}*{year}{m_str}*.nc')
+else:
+    input_files = select_input_files(input_dir, file_contains=files_contain)
 
 for i in range(n_files_to_check):
     input_path = random.choice(input_files)
