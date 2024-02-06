@@ -3,7 +3,7 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from ocean_model_data import load_roms_data
-from data.wind_data import read_era5_wind_data_from_netcdf, convert_u_v_to_meteo_vel_dir
+from read_meteo_data import load_era5_data, select_era5_in_closest_point, get_daily_mean_wind_data
 from tools.dswt_detection import determine_dswt_along_transect, determine_dswt_along_multiple_transects, calculate_horizontal_density_gradient_along_transect
 from transects import get_specific_transect_data, get_transects_in_lon_lat_range
 from gui_tools import plot_dswt_maps_transects, select_transects_to_plot
@@ -51,12 +51,13 @@ for i, date in enumerate(dates):
     l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds)
     
     # --- Load ERA5 wind data
-    wind_data = read_era5_wind_data_from_netcdf(get_dir_from_json("era5-wind"), date, date,
-                                                lon_range=plot_lon_range, lat_range=plot_lat_range)
-    u_mean = np.nanmean(wind_data.u)
-    v_mean = np.nanmean(wind_data.v)
-    wind_vel, wind_dir = convert_u_v_to_meteo_vel_dir(u_mean, v_mean)
+    era5_ds = load_era5_data(get_dir_from_json("era5"), '2017')
+    lon_p = transect_ds.lon_rho.values[np.floor(len(transect_ds.lon_rho)/2).astype(int)]
+    lat_p = transect_ds.lat_rho.values[np.floor(len(transect_ds.lat_rho)/2).astype(int)]
+    point_ds = select_era5_in_closest_point(era5_ds, lon_p, lat_p)
+    time, _, _, wind_vel, wind_dir = get_daily_mean_wind_data(point_ds)
+    i_wind = np.where(time == date)[0][0]
     
-    plot_dswt_scenario(roms_ds, transect_ds, l_dswt, time_to_plot[i], wind_vel, wind_dir,
+    plot_dswt_scenario(roms_ds, transect_ds, l_dswt, time_to_plot[i], wind_vel[i_wind], wind_dir[i_wind],
                        plot_lon_range, plot_lat_range, parallels, meridians,
                        output_path=output_path, show=False)
