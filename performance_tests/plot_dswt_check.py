@@ -19,7 +19,7 @@ cmap_temp = 'RdYlBu_r'
 cmap_salt = cm.cm.haline
 
 vmin_drhodz = 0.0
-vmax_drhodz = 0.04
+vmax_drhodz = 0.02
 cmap_drhodz = 'bone_r'
 
 wind_color = '#f1f5f9'
