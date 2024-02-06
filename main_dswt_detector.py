@@ -1,4 +1,4 @@
-from ocean_model_data import load_roms_data, select_roms_subset, select_input_files
+from read_ocean_data import load_roms_data, select_roms_subset, select_input_files
 from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
 from tools.dswt_detection import calculate_mean_dswt_along_all_transects
 from plot_tools.basic_timeseries import plot_histogram_monthly_dswt
@@ -16,10 +16,9 @@ import xarray as xr
 # --------------------------------------------------------
 # --- Input file info
 main_input_dir = get_dir_from_json('cwa-roms')
-year = '2017'
+years = np.arange(2000, 2012)
 model = 'cwa'
 
-input_dir = f'{main_input_dir}{year}/'
 grid_file = f'{main_input_dir}grid.nc'
 
 files_contain = f'{model}_' # set to None if not needed
@@ -65,8 +64,6 @@ domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
 # (using this method because cutting of the model domain
 # to generate transects can go wrong when determining the land polygon)
 transects_file = f'{transects_dir}{model}_transects.json'
-
-output_file = f'{output_dir}{model}_{year}_{domain}.csv'
 
 # --------------------------------------------------------
 # Create transects
@@ -116,12 +113,16 @@ def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid
     df.to_csv(output_file, index=False)
 
 # --- Detect DSWT occurrence and write to csv if file does not already exist
-if not os.path.exists(output_file):
-    write_daily_mean_dswt_fraction_to_csv(input_dir, files_contain, grid_file,
-                                          transects_file, output_file,
-                                          lon_range=lon_range, lat_range=lat_range)
-else:
-    log.info(f'Output file already exists, using existing file: {output_file}')
+for year in years:
+    input_dir = f'{main_input_dir}{year}/'
+    output_file = f'{output_dir}{model}_{year}_{domain}.csv'
+    
+    if not os.path.exists(output_file):
+        write_daily_mean_dswt_fraction_to_csv(input_dir, files_contain, grid_file,
+                                            transects_file, output_file,
+                                            lon_range=lon_range, lat_range=lat_range)
+    else:
+        log.info(f'Output file already exists, using existing file: {output_file}')
 
 # --------------------------------------------------------
 # Plot monthly mean DSWT
@@ -143,6 +144,12 @@ def calculate_monthly_mean_dswt_fraction(input_path:str) -> tuple[np.ndarray[dat
     
     return time_m, f_dswt_m
 
-time, f_dswt = calculate_monthly_mean_dswt_fraction(output_file)
+time = []
+f_dswt = []
+for year in years:
+    input_file = f'{output_dir}{model}_{year}_{domain}.csv'
+    time_y, f_dswt_y = calculate_monthly_mean_dswt_fraction(input_file)
+    time.append(time_y)
+    f_dswt.append(f_dswt_y)
 
-plot_histogram_monthly_dswt(time, f_dswt)
+plot_histogram_monthly_dswt(np.array(time), np.array(f_dswt))

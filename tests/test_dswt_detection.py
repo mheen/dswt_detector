@@ -3,8 +3,8 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 import pytest
-from ocean_model_data import load_roms_data, select_roms_transect
-from dswt_detection import determine_dswt_along_transect
+from read_ocean_data import load_roms_data, select_roms_transect
+from tools.dswt_detection import determine_dswt_along_transect
 
 transect_coords1 = [115.7, -31.76, 115.26, -31.95]
 

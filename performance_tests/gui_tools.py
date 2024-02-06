@@ -1,5 +1,5 @@
 from plot_tools.interactive_tools import plot_cycler
-from ocean_model_data import select_roms_transect
+from read_ocean_data import select_roms_transect
 from tools.roms import get_eta_xi_along_transect
 
 import xarray as xr

@@ -1,4 +1,4 @@
-from ocean_model_data import select_roms_transect
+from read_ocean_data import select_roms_transect
 from tools.roms import get_eta_xi_along_transect, find_eta_xi_covering_lon_lat_box
 from tools.coordinates import get_bearing_between_points
 from tools import log
