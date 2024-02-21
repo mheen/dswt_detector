@@ -63,7 +63,7 @@ def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
         n_months += 1
         add_date = add_month_to_time(start_date, n_months)
 
-    for n in range(n_months):
+    for n in range(n_months+1):
         start_date = add_month_to_time(time[0], n)
         end_date = add_month_to_time(time[0], n+1)
         l_time = get_l_time_range(time, start_date, end_date)
