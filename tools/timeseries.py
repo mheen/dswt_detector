@@ -72,6 +72,21 @@ def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
 
     return np.array(monthly_time), np.array(monthly_values)
 
+def get_yearly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
+    yearly_time = []
+    yearly_values = []
+    
+    n_years = time[-1].year - time[0].year + 1
+    
+    for n in range(n_years):
+        start_date = datetime(time[0].year+n, 1, 1)
+        end_date = datetime(start_date.year, 12, 31)
+        l_time = get_l_time_range(time, start_date, end_date)
+        yearly_time.append(datetime(start_date.year, 7, 2)) # middle of the year
+        yearly_values.append(np.nanmean(values[l_time], axis=time_axis))
+        
+    return np.array(yearly_time), np.array(yearly_values)
+
 def convert_time_to_datetime(time_org:np.ndarray, time_units:str) -> np.ndarray:
     time = []
     if 'since' in time_units:   
