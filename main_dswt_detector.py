@@ -16,7 +16,7 @@ import xarray as xr
 # --------------------------------------------------------
 # --- Input file info
 main_input_dir = get_dir_from_json('cwa-roms')
-years = np.arange(2000, 2012)
+years = np.arange(2000, 2024)
 model = 'cwa'
 
 grid_file = f'{main_input_dir}grid.nc'
@@ -123,33 +123,3 @@ for year in years:
                                             lon_range=lon_range, lat_range=lat_range)
     else:
         log.info(f'Output file already exists, using existing file: {output_file}')
-
-# --------------------------------------------------------
-# Plot monthly mean DSWT
-# --------------------------------------------------------
-def calculate_monthly_mean_dswt_fraction(input_path:str) -> tuple[np.ndarray[datetime], np.ndarray[float]]:
-    df = pd.read_csv(input_path)
-    time = pd.to_datetime(df['time'].values)
-    f_dswt = df['f_dswt'].values
-    
-    time_m = []
-    f_dswt_m = []
-    for n in range(time[0].month, time[-1].month+1):
-        l_time = [t.month == n for t in time]
-        time_m.append(datetime(time[0].year, n, 1))
-        f_dswt_m.append(np.nanmean(f_dswt[l_time]))
-    
-    time_m = np.array(time_m)
-    f_dswt_m = np.array(f_dswt_m)
-    
-    return time_m, f_dswt_m
-
-time = []
-f_dswt = []
-for year in years:
-    input_file = f'{output_dir}{model}_{year}_{domain}.csv'
-    time_y, f_dswt_y = calculate_monthly_mean_dswt_fraction(input_file)
-    time.append(time_y)
-    f_dswt.append(f_dswt_y)
-
-plot_histogram_monthly_dswt(np.array(time), np.array(f_dswt))
