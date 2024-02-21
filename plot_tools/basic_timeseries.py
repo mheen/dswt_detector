@@ -18,17 +18,17 @@ munits.registry[datetime] = converter
 locator = mdates.AutoDateLocator(minticks=5, maxticks=15)
 formatter = mdates.ConciseDateFormatter(locator)
 
-ocean_blue = '#25419e'
-
-def _get_center_label_width_for_bar_plot(time:np.ndarray[datetime], label_format='%b') -> tuple:
+def _get_center_label_width_for_monthly_bar_plot(time:np.ndarray[datetime], label_format='%b') -> tuple:
     time_plus = np.append(time, add_month_to_time(time[-1], 1))
     center_time = np.array(time+np.diff(time_plus)/2)
     str_time = np.array([t.strftime(label_format) for t in time])
     width = 0.8*np.array([dt.days for dt in np.diff(time_plus)])
     return center_time, str_time, width
 
-def plot_histogram_monthly_dswt_multiple_years(time:np.ndarray[datetime], f_dswt:np.ndarray[float],
-                                               ax=None, show=True) -> plt.axes:
+def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[float],
+                                  ylabel='', ylim=None,
+                                  color='#25419e', c_change=None,
+                                  ax=None, show=True) -> plt.axes:
     time_years = np.array([t.year for t in time])
     years = np.unique(time_years)
     
@@ -36,20 +36,32 @@ def plot_histogram_monthly_dswt_multiple_years(time:np.ndarray[datetime], f_dswt
     width = np.array([])
     for year in years:
         l_year = time_years == year
-        center, _, w = _get_center_label_width_for_bar_plot(time[l_year])
+        if np.sum(l_year) == 1:
+            center = np.array([datetime(time[l_year][0].year, 7, 2)])
+            w = np.array([0.8*365])
+        else:
+            center, _, w = _get_center_label_width_for_monthly_bar_plot(time[l_year])
         center_time = np.concatenate((center_time, center))
         width = np.concatenate((width, w))
        
     if ax is None:
         ax = plt.axes()
-         
-    ax.bar(center_time, f_dswt*100, color=ocean_blue, width=width)
+
+    if type(color) == str:
+        ax.bar(center_time, values, color=color, width=width)
+    elif type(color) == list and c_change is not None:
+        l0 = values <= c_change
+        l1 = values > c_change
+        ax.bar(center_time[l0], values[l0], color=color[0], width=width[l0])
+        ax.bar(center_time[l1], values[l1], color=color[1], width=width[l1])
+        ax.plot([center_time[0], center_time[-1]], [c_change, c_change], '-k')
     
-    ax.set_ylabel('DSWT occurrence (%)')
-    ax.set_ylim([0, 100])
+    ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
     
-    ax.set_xticks([datetime(y, 7, 2) for y in years])
-    ax.set_xticklabels(years)
+    ax.set_xticks([datetime(y, 7, 2) for y in years]) # ticks in the middle of the year
+    ax.set_xticklabels(years, rotation='vertical')
     plt.tick_params(axis='x', length=0)
     ax.set_xlim([time[0], time[-1]])
     
@@ -58,17 +70,27 @@ def plot_histogram_monthly_dswt_multiple_years(time:np.ndarray[datetime], f_dswt
     else:
         return ax
 
-def plot_histogram_monthly_dswt(time:np.ndarray[datetime], f_dswt:np.ndarray[float],
-                                ax=None, show=True) -> plt.axes:
+def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
+                           ylabel='', ylim=None,
+                           color='#25419e', c_change=None,
+                           ax=None, show=True) -> plt.axes:
     
-    center_time, str_time, width = _get_center_label_width_for_bar_plot(time)
+    center_time, str_time, width = _get_center_label_width_for_monthly_bar_plot(time)
     
     if ax is None:
         ax = plt.axes()
         
-    ax.bar(center_time, f_dswt*100, color=ocean_blue, tick_label=str_time, width=width)
-    ax.set_ylabel('DSWT occurrence (%)')
-    ax.set_ylim([0, 100])
+    if type(color) == str:
+        ax.bar(center_time, values, color=color, width=width)
+    elif type(color) == list and c_change is not None:
+        l0 = values <= c_change
+        l1 = values > c_change
+        ax.bar(center_time[l0], values[l0], color=color[0], width=width[l0])
+        ax.bar(center_time[l1], values[l1], color=color[1], width=width[l1])
+    
+    ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
     
     if show is True:
         plt.show()
