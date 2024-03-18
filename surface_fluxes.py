@@ -31,7 +31,25 @@ def write_daily_mean_sflux_to_csv(input_dir:str,
             df.to_csv(output_path, mode='a', header=False, index=False)
         else:
             df.to_csv(output_path, index=False)
-    
+
+def read_surface_fluxes_from_csvs(input_paths:list[str]) -> tuple[np.ndarray[datetime], np.ndarray[float]]:
+    time = pd.to_datetime(np.array([]))
+    shflux = np.array([])
+    ssflux = np.array([])
+    for input_path in input_paths:
+        df = pd.read_csv(input_path)
+        time_y = pd.to_datetime(df['time'].values)
+        shflux_y = df['shflux'].values
+        ssflux_y = df['ssflux'].values
+        
+        time = np.concatenate((time, time_y))
+        shflux = np.concatenate((shflux, shflux_y))
+        ssflux = np.concatenate((ssflux, ssflux_y))
+        
+    time = np.array([pd.to_datetime(t) for t in time])
+        
+    return time, shflux, ssflux
+ 
 if __name__ == '__main__':
     main_input_dir = get_dir_from_json('cwa-roms')
     subdir = 'shflux'
