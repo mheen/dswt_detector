@@ -1,8 +1,6 @@
 from read_ocean_data import load_roms_data, select_roms_subset, select_input_files
 from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
 from tools.dswt_detection import calculate_mean_dswt_along_all_transects
-from plot_tools.basic_timeseries import plot_histogram_monthly_dswt
-
 from tools import log
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
 import os
