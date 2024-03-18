@@ -59,11 +59,16 @@ def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[f
     ax.set_ylabel(ylabel)
     if ylim is not None:
         ax.set_ylim(ylim)
+    else:
+        ylim = ax.get_ylim()
     
     ax.set_xticks([datetime(y, 7, 2) for y in years]) # ticks in the middle of the year
     ax.set_xticklabels(years, rotation='vertical')
     plt.tick_params(axis='x', length=0)
     ax.set_xlim([time[0], time[-1]])
+    
+    for y in years: # plot grid to show years
+        ax.plot([datetime(y, 1, 1), datetime(y, 1, 1)], ylim, '-', color='#808080', alpha=0.2)
     
     if show == True:
         plt.show()
