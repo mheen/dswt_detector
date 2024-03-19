@@ -3,7 +3,7 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from tools.files import get_dir_from_json
-from tools.timeseries import get_l_time_range, add_month_to_time
+from tools.timeseries import get_l_time_range, add_month_to_time, convert_decimal_year_to_datetime
 import pandas as pd
 import xarray as xr
 from datetime import datetime, timedelta
@@ -56,3 +56,23 @@ def read_dmi_data(input_path=get_dir_from_json('dmi'), year_range=None) -> tuple
         dmi_monthly_mean = dmi_monthly_mean[l_time]
 
     return time_monthly_mean, dmi_monthly_mean
+
+# Fremantle mean sea level (measure for strength Leeuwin Current, which is related to climate indices)
+# https://psmsl.org/data/obtaining/stations/111.php#docu
+def read_yearly_fremantle_msl(input_path=f'{get_dir_from_json("msl")}fremantle_msl_annual.csv') -> tuple[np.ndarray, np.ndarray]:
+    df = pd.read_csv(input_path)
+    time = df['year'].values
+    time = np.array([datetime(t, 1, 1) + timedelta(seconds=(datetime(t+1, 1, 1)-datetime(t, 1, 1)).total_seconds()/2) for t in time])
+    msl = df['msl'].values.astype(float)
+    msl[msl==-99999] = np.nan
+    
+    return time, msl
+
+def read_monthly_fremantle_msl(input_path=f'{get_dir_from_json("msl")}fremantle_msl_monthly.csv') -> tuple[np.ndarray, np.ndarray]:
+    df = pd.read_csv(input_path)
+    time = df['date'].values
+    time = convert_decimal_year_to_datetime(time)
+    msl = df['msl'].values.astype(float)
+    msl[msl==-99999] = np.nan
+    
+    return time, msl
