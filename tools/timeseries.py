@@ -78,7 +78,7 @@ def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
         start_date = add_month_to_time(time[0], n)
         end_date = add_month_to_time(time[0], n+1)
         l_time = get_l_time_range(time, start_date, end_date)
-        monthly_time.append(start_date)
+        monthly_time.append(start_date+timedelta(seconds=(start_date-end_date).total_seconds()/2))
         monthly_values.append(np.nanmean(values[l_time], axis=time_axis))
 
     return np.array(monthly_time), np.array(monthly_values)
