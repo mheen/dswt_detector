@@ -76,11 +76,17 @@ def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[f
         return ax
 
 def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
-                           ylabel='', ylim=None,
+                           ylabel='', ylim=None, time_is_center=False,
                            color='#25419e', c_change=None,
                            ax=None, show=True) -> plt.axes:
     
-    center_time, str_time, width = _get_center_label_width_for_monthly_bar_plot(time)
+    if time_is_center is False:
+        center_time, str_time, width = _get_center_label_width_for_monthly_bar_plot(time)
+    else:
+        center_time = time
+        time_plus = np.append(time, add_month_to_time(time[-1], 1))
+        str_time = np.array([t.strftime('%b') for t in time])
+        width = 0.8*np.array([dt.days for dt in np.diff(time_plus)])
     
     if ax is None:
         ax = plt.axes()
@@ -92,6 +98,10 @@ def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
         l1 = values > c_change
         ax.bar(center_time[l0], values[l0], color=color[0], width=width[l0])
         ax.bar(center_time[l1], values[l1], color=color[1], width=width[l1])
+        ax.plot([center_time[0], center_time[-1]], [c_change, c_change], '-k')
+    
+    ax.set_xticks(center_time)
+    ax.set_xticklabels(str_time)
     
     ax.set_ylabel(ylabel)
     if ylim is not None:
@@ -100,4 +110,4 @@ def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
     if show is True:
         plt.show()
     else:
-        return ax
+        return ax, center_time, str_time
