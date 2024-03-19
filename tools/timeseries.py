@@ -2,6 +2,17 @@ import numpy as np
 from datetime import datetime, timedelta
 import re
 
+def convert_decimal_year_to_datetime(decimal_years:np.ndarray[float]) -> np.ndarray[datetime]:
+    time = []
+    for d in decimal_years:
+        year = int(d)
+        rem = d-year
+        
+        base = datetime(year, 1, 1)
+        time.append(base+timedelta(seconds=(base.replace(year=year+1)-base).total_seconds()*rem))
+        
+    return np.array(time)
+
 def get_time_index(time_array:np.ndarray, time:datetime) -> int:
     '''Returns exact index of a requested time, raises
     error if this does not exist.'''
