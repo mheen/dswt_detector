@@ -14,11 +14,11 @@ import matplotlib.pyplot as plt
 # USER INPUT
 # ---------------------------------------------------------
 
-plot_interannual_variation = False
-plot_specific_year = True
+plot_interannual_variation = True
+plot_specific_year = False
 
-means = 'monthly'
-specific_years = [2015, 2019, 2022]
+means = 'yearly'
+specific_years = [2008, 2010, 2011, 2012, 2015, 2019, 2022, 2006, 2017]
 
 years = np.arange(2000, 2023)
 model = 'cwa'
@@ -47,6 +47,23 @@ domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
 
 # --- load DSWT data ---
 
+def get_means(time, values, means:str):
+    if means == 'yearly':
+        values_mean = np.repeat(np.nanmean(values), len(time))
+        return values_mean
+    
+    values_mean = []
+    for m in range(1, 13):
+        l_month = [t.month == m for t in time]
+        values_mean.append(np.nanmean(values[l_month]))
+    
+    values_mean = np.tile(values_mean, int(len(time)/len(values_mean)))
+    
+    if len(values_mean) != len(time):
+        raise ValueError(f'Unequal lengths for time and monthly climatology')
+    
+    return values_mean
+
 def read_f_dswt_from_csvs(input_paths:list[str], means='monthly') -> tuple[np.ndarray[datetime], np.ndarray[float]]:
     time = np.array([])
     f_dswt = np.array([])
@@ -69,14 +86,16 @@ def read_f_dswt_from_csvs(input_paths:list[str], means='monthly') -> tuple[np.nd
         
         time = np.concatenate((time, time_y))
         f_dswt = np.concatenate((f_dswt, f_dswt_y))
-        
-    return time, f_dswt
+    
+    f_dswt_mean = get_means(time, f_dswt, means)
+    
+    return time, f_dswt, f_dswt_mean
 
 input_paths = []
 for year in years:
     input_paths.append(f'{input_dir}{model}_{year}_{domain}.csv')
 
-time, f_dswt = read_f_dswt_from_csvs(input_paths, means=means)
+time, f_dswt, f_dswt_mean = read_f_dswt_from_csvs(input_paths, means=means)
 
 # --- load climate indices ---
 time_dmi, dmi = read_dmi_data(year_range=[years[0], years[-1]])
@@ -108,6 +127,8 @@ if means == 'yearly':
 elif means == 'monthly':
     time_sflux, shflux = get_monthly_means(time_sflux_d, shflux)
     _, ssflux = get_monthly_means(time_sflux_d, ssflux)
+shflux_mean = get_means(time_sflux, shflux, means)
+ssflux_mean = get_means(time_sflux, ssflux, means)
     
 input_paths_wind = []
 for year in years:
@@ -120,6 +141,8 @@ if means == 'yearly':
 elif means == 'monthly':
     time_wind, vel = get_monthly_means(time_wind_d, vel)
     _, dir = get_monthly_means(time_wind_d, dir)
+vel_mean = get_means(time_wind, vel, means)
+dir_mean = get_means(time_wind, dir, means)
 
 # ---------------------------------------------------------
 # Plot tools
@@ -128,13 +151,15 @@ if means == 'yearly':
     ylim_dswt = [0, 40]
     ylim_shflux = [-100, 0]
     ylim_ssflux = [0, 1.5*10**(-6)]
-    ylim_wind = [0, 7.5]
+    ylim_wind = [6.0, 7.0]
+    ylim_wdir = [135, 225]
     ylim_fmsl = [-120, 120]
 else:
     ylim_dswt = [0, 100]
     ylim_shflux = [-300, 300]
     ylim_ssflux = [-3*10**(-6), 3*10**(-6)]
-    ylim_wind = [0, 10]
+    ylim_wind = [4, 8]
+    ylim_wdir = [135, 225]
     ylim_fmsl = [-270, 270]
 
 def _plot_yearly_grid(ax:plt.axes, years:list) -> plt.axes:
@@ -165,7 +190,7 @@ def _color_y_axis(ax:plt.axes, color:str, spine_location:str):
 
 def _wind_dir_ticks(ax:plt.axes) -> plt.axes:
     yticks = [0, 45, 90, 135, 180, 225, 270, 315, 360]
-    ytick_labels = ['N', '', 'E', '', 'S', '', 'W', '', 'N']
+    ytick_labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N']
     ax.set_yticks(yticks)
     ax.set_yticklabels(ytick_labels)
     return ax
@@ -184,10 +209,8 @@ if plot_interannual_variation == True:
                                         ylabel='DSWT occurrence (%)', ylim=ylim_dswt, color=ocean_blue,
                                         ax=ax1, show=False)
     ax1.set_xlim(xlim)
-    ax1.set_xticklabels([])
-    
-    mean_f_dswt = np.nanmean(f_dswt)*100
-    ax1.plot(xlim, [mean_f_dswt, mean_f_dswt], '--', color='#808080')
+    ax1.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+    ax1.plot(time, f_dswt_mean*100, '--', color='#808080')
 
     # IOD
     ax2 = plt.subplot(5, 1, 2)
@@ -229,16 +252,14 @@ if plot_interannual_variation == True:
     ax4 = _plot_yearly_grid(ax4, years)
     ax4.set_xticklabels([])
     
-    mean_shflux = np.nanmean(shflux)
-    ax4.plot(xlim, [mean_shflux, mean_shflux], '--', color=color_pos, alpha=0.5)
+    ax4.plot(time_sflux, shflux_mean, '--', color=color_pos, alpha=0.5)
     
     ax5 = ax4.twinx()
     ax5.plot(time_sflux, ssflux, '-', linewidth=0.5, color=color_neg)
     ax5.set_ylabel('Surface salt flux (m/s)')
     ax5.set_ylim(ylim_ssflux)
     
-    mean_ssflux = np.nanmean(ssflux)
-    ax5.plot(xlim, [mean_ssflux, mean_ssflux], '--', color=color_neg, linewidth=0.5, alpha=0.5)
+    ax5.plot(time_sflux, ssflux_mean, '--', color=color_neg, linewidth=0.5, alpha=0.5)
     
     ax5 = _color_y_axis(ax5, color_neg, 'right')
 
@@ -249,20 +270,18 @@ if plot_interannual_variation == True:
     ax6.set_ylim(ylim_wind)
     ax6.set_ylabel('Wind speed (m/s)')
     
-    mean_vel = np.nanmean(vel)
-    ax6.plot(xlim, [mean_vel, mean_vel], '--', color=ocean_blue, alpha=0.5)
+    ax6.plot(time_wind, vel_mean, '--', color=ocean_blue, alpha=0.5)
     
     ax6 = _color_y_axis(ax6, ocean_blue, 'left')
     ax6 = _plot_yearly_grid(ax6, years)
     
     ax7 = ax6.twinx()
     ax7.plot(time_wind, dir, '-', color='k', linewidth=0.5)
-    ax7.set_ylim([0, 360])
     ax7.set_ylabel('Wind direction')
     ax7 = _wind_dir_ticks(ax7)
+    ax7.set_ylim(ylim_wdir)
     
-    mean_dir = np.nanmean(dir)
-    ax7.plot(xlim, [mean_dir, mean_dir], '--', color='k', linewidth=0.5, alpha=0.5)
+    ax7.plot(time_wind, dir_mean, '--', color='k', linewidth=0.5, alpha=0.5)
     
     ax7 = _color_y_axis(ax7, 'k', 'right')
 
@@ -292,9 +311,10 @@ if plot_specific_year == True:
         ax1, xticks, xticklabels = plot_monthly_histogram(time[l_time], f_dswt[l_time]*100, ylabel='DSWT occurrence (%)',
                                                         ylim=ylim_dswt, color=ocean_blue, time_is_center=True,
                                                         ax=ax1, show=False)
+        ax1.plot(time, f_dswt_mean*100, '--', color='#808080')
+        
         ax1 = plot_monthly_grid(ax1, specific_year)
         ax1.set_xlim(xlim)
-        ax1.set_xticklabels([])
         
         ax1.set_title(specific_year)
 
@@ -328,6 +348,7 @@ if plot_specific_year == True:
         ax4 = plt.subplot(5, 1, 4)
         ax4.plot(xlim, [0, 0], '-k')
         ax4.plot(time_sflux, shflux, '-', color=color_pos)
+        ax4.plot(time_sflux, shflux_mean, '--', color=color_pos, alpha=0.5)
         
         ax4.set_xticks(xticks)
         ax4.set_xticklabels([])
@@ -340,6 +361,7 @@ if plot_specific_year == True:
         
         ax5 = ax4.twinx()
         ax5.plot(time_sflux, ssflux, '-', linewidth=0.5, color=color_neg)
+        ax5.plot(time_sflux, ssflux_mean, '--', color=color_neg, linewidth=0.5, alpha=0.5)
         ax5.set_xlim(xlim)
         ax5.set_ylabel('Surface salt flux (m/s)')
         ax5.set_ylim(ylim_ssflux)
@@ -349,6 +371,7 @@ if plot_specific_year == True:
         # Wind
         ax6 = plt.subplot(5, 1, 5)
         ax6.plot(time_wind, vel, '-', color=ocean_blue)
+        ax6.plot(time_wind, vel_mean, '--', color=ocean_blue, alpha=0.5)
         
         ax6.set_xticks(xticks)
         ax6.set_xticklabels(xticklabels)
@@ -361,10 +384,11 @@ if plot_specific_year == True:
         
         ax7 = ax6.twinx()
         ax7.plot(time_wind, dir, '-', color='k', linewidth=0.5)
+        ax7.plot(time_wind, dir_mean, '--', color='k', linewidth=0.5, alpha=0.5)
         ax7.set_xlim(xlim)
-        ax7.set_ylim([0, 360])
         ax7.set_ylabel('Wind direction')
         ax7 = _wind_dir_ticks(ax7)
+        ax7.set_ylim(ylim_wdir)
         
         ax7 = _color_y_axis(ax7, 'k', 'right')
 
