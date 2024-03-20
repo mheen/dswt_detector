@@ -14,11 +14,11 @@ import matplotlib.pyplot as plt
 # USER INPUT
 # ---------------------------------------------------------
 
-plot_interannual_variation = True
-plot_specific_year = False
+plot_interannual_variation = False
+plot_specific_year = True
 
-means = 'yearly'
-specific_years = [2008, 2010, 2011, 2012, 2015, 2019, 2022, 2006, 2017]
+means = 'monthly'
+specific_years = np.arange(2000, 2023)
 
 years = np.arange(2000, 2023)
 model = 'cwa'
