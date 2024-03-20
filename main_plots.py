@@ -1,7 +1,7 @@
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_monthly_histogram
-from read_climate_indices import read_dmi_data, read_mei_data, read_yearly_fremantle_msl, read_monthly_fremantle_msl
-from surface_fluxes import read_surface_fluxes_from_csvs
-from read_meteo_data import read_wind_from_csvs
+from readers.read_climate_indices import read_dmi_data, read_mei_data, read_yearly_fremantle_msl, read_monthly_fremantle_msl
+from readers.surface_fluxes import read_surface_fluxes_from_csvs
+from readers.read_meteo_data import read_wind_from_csvs
 from tools.timeseries import get_yearly_means, get_monthly_means, add_month_to_time, get_l_time_range
 from tools import log
 from tools.files import get_dir_from_json

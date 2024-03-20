@@ -3,7 +3,7 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from performance_tests.plot_dswt_check import plot_dswt_check
-from read_ocean_data import select_input_files, load_roms_data
+from readers.read_ocean_data import select_input_files, load_roms_data
 from transects import get_transects_in_lon_lat_range, get_specific_transect_data
 from tools.files import get_dir_from_json
 from tools import log

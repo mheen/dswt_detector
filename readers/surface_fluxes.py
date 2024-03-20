@@ -1,4 +1,4 @@
-from read_ocean_data import select_input_files, read_roms_data, select_roms_subset
+from readers.read_ocean_data import select_input_files, read_roms_data, select_roms_subset
 from tools import log
 from tools.files import get_dir_from_json
 from datetime import datetime

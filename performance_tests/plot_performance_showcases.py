@@ -2,8 +2,8 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
-from read_ocean_data import load_roms_data
-from read_meteo_data import load_era5_data, select_era5_in_closest_point, get_daily_mean_wind_data
+from readers.read_ocean_data import load_roms_data
+from readers.read_meteo_data import load_era5_data, select_era5_in_closest_point, get_daily_mean_wind_data
 from dswt.dswt_detection import determine_dswt_along_transect, determine_dswt_along_multiple_transects, calculate_horizontal_density_gradient_along_transect
 from transects import get_specific_transect_data, get_transects_in_lon_lat_range
 from gui_tools import plot_dswt_maps_transects, select_transects_to_plot

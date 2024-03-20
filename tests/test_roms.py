@@ -7,7 +7,7 @@ import xarray as xr
 import numpy as np
 from tools.roms import get_eta_xi_of_lon_lat_point, find_eta_xi_covering_lon_lat_box, get_eta_xi_along_transect
 from tools.roms import get_z
-from read_ocean_data import select_input_files, load_roms_data
+from readers.read_ocean_data import select_input_files, load_roms_data
 
 cwa_grid = xr.load_dataset('tests/data/cwa_grid.nc')
 cwa_lon = cwa_grid.lon_rho.values
