@@ -80,10 +80,7 @@ def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid
                                           transects_file:str, output_file:str,
                                           lon_range=None, lat_range=None):
     
-    if lon_range is not None and lat_range is not None:
-        transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
-    else:
-        transects = get_transects_dict_from_json(transects_file)
+    transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
     
     roms_files = select_input_files(input_dir, files_contain)
     roms_files.sort()

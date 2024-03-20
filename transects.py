@@ -175,23 +175,26 @@ def get_transects_in_lon_lat_range(transects_file:str,
                                    lat_range:list[float]) -> dict:
     
     all_transects = get_transects_dict_from_json(transects_file)
-    if lon_range is not None and lat_range is not None:
-        transects = {}
-        for t in list(all_transects.keys()):
-            l_lon_land = np.logical_and(lon_range[0] <= all_transects[t]['lon_land'], all_transects[t]['lon_land'] <= lon_range[1])
-            l_lon_ocean = np.logical_and(lon_range[0] <= all_transects[t]['lon_ocean'], all_transects[t]['lon_ocean'] <= lon_range[1])
-            l_lon = np.logical_and(l_lon_land, l_lon_ocean)
-            
-            l_lat_land = np.logical_and(lat_range[0] <= all_transects[t]['lat_land'], all_transects[t]['lat_land'] <= lat_range[1])
-            l_lat_ocean = np.logical_and(lat_range[0] <= all_transects[t]['lat_ocean'], all_transects[t]['lat_ocean'] <= lat_range[1])
-            l_lat = np.logical_and(l_lat_land, l_lat_ocean)
-            
-            l_range = np.logical_and(l_lon, l_lat)
-            
-            if l_range == True:
-                transects[t] = all_transects[t]
-            else:
-                continue
+    
+    if lon_range is None and lat_range is None:
+        return all_transects
+
+    transects = {}
+    for t in list(all_transects.keys()):
+        l_lon_land = np.logical_and(lon_range[0] <= all_transects[t]['lon_land'], all_transects[t]['lon_land'] <= lon_range[1])
+        l_lon_ocean = np.logical_and(lon_range[0] <= all_transects[t]['lon_ocean'], all_transects[t]['lon_ocean'] <= lon_range[1])
+        l_lon = np.logical_and(l_lon_land, l_lon_ocean)
+        
+        l_lat_land = np.logical_and(lat_range[0] <= all_transects[t]['lat_land'], all_transects[t]['lat_land'] <= lat_range[1])
+        l_lat_ocean = np.logical_and(lat_range[0] <= all_transects[t]['lat_ocean'], all_transects[t]['lat_ocean'] <= lat_range[1])
+        l_lat = np.logical_and(l_lat_land, l_lat_ocean)
+        
+        l_range = np.logical_and(l_lon, l_lat)
+        
+        if l_range == True:
+            transects[t] = all_transects[t]
+        else:
+            continue
     
     return transects
 
