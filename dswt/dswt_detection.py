@@ -3,6 +3,7 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from readers.read_ocean_data import load_roms_data, select_roms_transect
+from tools.config import Config
 from itertools import groupby
 import numpy as np
 import xarray as xr
@@ -25,11 +26,7 @@ def calculate_horizontal_density_gradient_along_transect(transect_ds:xr.Dataset)
 
     return drhodx
 
-def determine_dswt_along_transect(transect_ds:xr.Dataset,
-                                  minimum_drhodz=minimum_drhodz_default,
-                                  minimum_p_cells=minimum_p_cells_default,
-                                  drhodz_depth_p=drhodz_depth_p_default,
-                                  filter_depth=filter_depth_default):
+def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config):
     '''Determines if DSWT is occurring along a transect or not.
     Conditions for DSWT are:
     1. There must be a negative horizontal density gradient along the transect
@@ -58,9 +55,9 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
     This option may be redundant with the drho/dz condition used though.'''
     
     # remove data for depths above filter_depth_up_to
-    if filter_depth is not None:
+    if config.filter_depth is not None:
         # mask (replace with NaNs) all values where depth > filter_depth_up_to:
-        transect_ds = transect_ds.where(transect_ds.h < filter_depth)
+        transect_ds = transect_ds.where(transect_ds.h < config.filter_depth)
     
     # condition 1: horizontal density gradient (away from coast) must be negative
     # this is determined per time over the entire transect
@@ -71,8 +68,8 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
     # AND the vertical density gradient must exceed this value for a minimum number of cells
     # the result is that DSWT is determined for the entire transect
     n_z_layers = len(transect_ds.z_rho)
-    n_depth_layers = int(np.ceil(n_z_layers*drhodz_depth_p))
-    l_drhodz = np.any(transect_ds.vertical_density_gradient[:, 0:n_depth_layers, :] > minimum_drhodz, axis=1) # [time, distance] (check for any along depth)
+    n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage))
+    l_drhodz = np.any(transect_ds.vertical_density_gradient[:, 0:n_depth_layers, :] > config.minimum_drhodz, axis=1) # [time, distance] (check for any along depth)
     n_used_cells = sum(~np.isnan(transect_ds.h.values))
     drhodz_max = []
     drhodz_cells = []
@@ -85,7 +82,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
             n_consecutive_cells = 0
         drhodz_cells.append(n_consecutive_cells/n_used_cells)
         drhodz_max.append(np.nanmax(transect_ds.vertical_density_gradient[t, 0:n_depth_layers, :]))
-        condition2.append((n_consecutive_cells/n_used_cells) >= minimum_p_cells)
+        condition2.append((n_consecutive_cells/n_used_cells) >= config.minimum_percentage_consecutive_cells)
     condition2 = np.array(condition2)
     
     # DSWT along a transect when both condition 1 and condition 2 hold
@@ -93,11 +90,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset,
     
     return l_dswt, condition1, condition2, drhodz_max, drhodz_cells
 
-def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict,
-                                            minimum_drhodz=minimum_drhodz_default,
-                                            minimum_p_cells=minimum_p_cells_default,
-                                            drhodz_depth_p=drhodz_depth_p_default,
-                                            filter_depth=filter_depth_default) -> dict:
+def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, config:Config) -> dict:
     
     transect_names = list(transects.keys())
     
@@ -109,9 +102,7 @@ def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict,
         lat_ocean = transects[transect_name]['lat_ocean']
         
         transect_ds = select_roms_transect(roms_ds, lon_land, lat_land, lon_ocean, lat_ocean)
-        l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, minimum_drhodz=minimum_drhodz,
-                                                 minimum_p_cells=minimum_p_cells, drhodz_depth_p=drhodz_depth_p,
-                                                 filter_depth=filter_depth)
+        l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
         
         transects_dswt[transect_name] = {'l_dswt': l_dswt,
                                          'lon_land': lon_land,
@@ -121,16 +112,8 @@ def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict,
         
     return transects_dswt    
 
-def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict,
-                                            minimum_drhodz=minimum_drhodz_default,
-                                            minimum_p_cells=minimum_p_cells_default,
-                                            drhodz_depth_p=drhodz_depth_p_default,
-                                            filter_depth=filter_depth_default) -> float:
-    transects_dswt = determine_dswt_along_multiple_transects(ds, transects,
-                                                             minimum_drhodz=minimum_drhodz,
-                                                             minimum_p_cells=minimum_p_cells,
-                                                             drhodz_depth_p=drhodz_depth_p,
-                                                             filter_depth=filter_depth)
+def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict, config:Config) -> float:
+    transects_dswt = determine_dswt_along_multiple_transects(ds, transects, config)
     transect_names = list(transects_dswt.keys())
     
     l_dswt = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
@@ -140,7 +123,3 @@ def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict,
     mean_dswt = np.nanmean(l_dswt)
     
     return mean_dswt
-
-if __name__ == '__main__':
-    roms_ds = load_roms_data('tests/data/cwa_20170222.nc', 'tests/data/cwa_grid.nc')
-    l_dswt = determine_dswt_along_multiple_transects(roms_ds, 'tests/data/cwa_transects.json')

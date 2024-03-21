@@ -1,6 +1,7 @@
 from readers.read_ocean_data import load_roms_data, select_roms_subset, select_input_files
 from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
 from dswt.dswt_detection import calculate_mean_dswt_along_all_transects
+from tools.config import Config, read_config
 from tools import log
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
 import os
@@ -12,10 +13,13 @@ import xarray as xr
 # --------------------------------------------------------
 # User input
 # --------------------------------------------------------
+
+model = 'cwa'
+config = read_config(model)
+
 # --- Input file info
 main_input_dir = get_dir_from_json('cwa-roms')
 years = np.arange(2000, 2024)
-model = 'cwa'
 
 grid_file = f'{main_input_dir}grid.nc'
 
@@ -31,24 +35,6 @@ create_dir_if_does_not_exist(output_dir)
 # --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
 lat_range = [-33.0, -31.0] # set to None for full domain
-
-# --- DSWT detection settings
-# no need to change if using recommended settings
-if model.lower() == 'cwa':
-    minimum_drhodz = 0.02
-    minimum_p_cells = 0.10
-    drhodz_depth_p = 0.50
-    filter_depth = 100.
-elif model.lower() == 'ozroms': # note: for daily ozroms
-    minimum_drhodz = 0.01
-    minimum_p_cells = 0.10
-    drhodz_depth_p = 0.50
-    filter_depth = 100.
-else: # default settings
-    minimum_drhodz = 0.02
-    minimum_p_cells = 0.10
-    drhodz_depth_p = 0.50
-    filter_depth = 100.
 
 # --- Automated file naming (no need to change)
 lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
@@ -96,7 +82,7 @@ def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid
             
         # Get daily mean percentage of DSWT occurrence along transects
         # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
-        f_dswt.append(calculate_mean_dswt_along_all_transects(ds, transects))
+        f_dswt.append(calculate_mean_dswt_along_all_transects(ds, transects, config))
         ocean_time0 = pd.to_datetime(ds.ocean_time.values[0])
         time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
 
