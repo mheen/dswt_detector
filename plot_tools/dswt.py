@@ -2,6 +2,7 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
+from tools.config import Config
 from plot_tools.basic_maps import plot_basic_map, plot_contours
 from plot_tools.general import add_subtitle
 
@@ -54,6 +55,27 @@ def plot_transect(ax:plt.axes, transect_ds:xr.Dataset, variable:str, t_dswt:int,
     ax.set_yticklabels([0, 100, 200])
     
     return ax, c
+
+def add_alpha_to_transect_parts_not_used_dswt_detection(ax:plt.axes, transect_ds:xr.Dataset, config:Config) -> plt.axes:
+    # depth filter
+    ax.fill_between(transect_ds.distance.values, -210, -config.filter_depth, color='w', alpha=0.5, edgecolor='none')
+    
+    # bottom layers filter
+    n_z_layers = len(transect_ds.z_rho)
+    n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage))
+    ax.fill_between(transect_ds.distance.values, transect_ds.z_rho.values[n_depth_layers, :], 0, color='w', alpha=0.5, edgecolor='none')
+    
+    return ax
+    
+
+def plot_vertical_lines_in_transect(ax:plt.axes, transect_ds:xr.Dataset,
+                                    variable:str, t:int,
+                                    vmax:float, color='k') -> plt.axes:
+    d_dist = np.diff(transect_ds.distance.values)
+    for i in range(len(transect_ds.distance)-1):
+        ax.plot(transect_ds[variable][t, :, i]*d_dist[i]/vmax+transect_ds.distance[i], transect_ds.z_rho[:, i], '-', color=color, linewidth=0.5)
+        
+    return ax
 
 def transects_plot(transect_ds:xr.Dataset, t_dswt:int,
                    fig:plt.figure, n_rows:int, n_cols:int, n_start:int,
