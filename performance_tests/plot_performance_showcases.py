@@ -4,9 +4,8 @@ sys.path.insert(1, parent)
 
 from readers.read_ocean_data import load_roms_data
 from readers.read_meteo_data import load_era5_data, select_era5_in_closest_point, get_daily_mean_wind_data
-from dswt.dswt_detection import determine_dswt_along_transect, determine_dswt_along_multiple_transects, calculate_horizontal_density_gradient_along_transect
+from dswt.dswt_detection import determine_dswt_along_transect
 from transects import get_specific_transect_data, get_transects_in_lon_lat_range
-from gui_tools import plot_dswt_maps_transects, select_transects_to_plot
 from performance_tests.plot_dswt_check import plot_dswt_scenario
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
 from datetime import datetime
