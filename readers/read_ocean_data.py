@@ -29,6 +29,10 @@ def read_roms_data(input_paths:str, grid_file:str) -> xr.Dataset:
     log.info(f'Reading ROMS data from files: {input_paths}')
     roms_ds = xr.open_mfdataset(input_paths, data_vars='minimal')
     
+    # model dt
+    dt = np.unique(np.diff(roms_ds.ocean_time).astype('timedelta64[s]').astype(float))[0]
+    roms_ds['dt'] = dt
+    
     # read grid variables if in separate file
     if 'lon_rho' not in roms_ds.variables:
         if grid_file is None:
