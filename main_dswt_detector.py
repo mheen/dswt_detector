@@ -13,30 +13,31 @@ import xarray as xr
 # --------------------------------------------------------
 # User input
 # --------------------------------------------------------
-
 model = 'cwa'
-config = read_config(model)
-
-# --- Input file info
-main_input_dir = get_dir_from_json('cwa-roms')
 years = np.arange(2000, 2024)
-
-grid_file = f'{main_input_dir}grid.nc'
-
-files_contain = f'{model}_' # set to None if not needed
-
-transects_dir = 'input/transects/'
-create_dir_if_does_not_exist(transects_dir)
-
-# --- Output file info
-output_dir = 'output/'
-create_dir_if_does_not_exist(output_dir)
 
 # --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
 lat_range = [-33.0, -31.0] # set to None for full domain
 
-# --- Automated file naming (no need to change)
+# --- DSWT detection settings (default config file: 'input/configs/main_config.toml')
+config = read_config(model)
+
+# --- Input file info
+model_input_dir = get_dir_from_json('cwa')
+grid_file = f'{model_input_dir}grid.nc' # set to None if grid information in output files
+files_contain = f'{model}_' # set to None if not needed
+
+# --------------------------------------------------------
+# Optional file settings (no need to change)
+transects_dir = 'input/transects/'
+create_dir_if_does_not_exist(transects_dir)
+
+# --- Output file info
+output_dir = f'output/{model}/'
+create_dir_if_does_not_exist(output_dir)
+
+# --- Automated domain name
 lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
 lon_range_unit = 'E' if lon_range[0] > 0 else 'W'
 lat_range_str = f'{int(abs(np.floor(lat_range[0])))}-{int(abs(np.ceil(lat_range[1])))}'
@@ -60,7 +61,8 @@ else:
     log.info(f'Transects file already exists, using existing file: {transects_file}')
 
 # --------------------------------------------------------
-# Detect dense shelf water transport
+# Detect dense shelf water transport &
+# Calculate total cross-shelf transport
 # --------------------------------------------------------
 def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid_file:str,
                                           transects_file:str, output_file:str,
@@ -95,12 +97,42 @@ def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid
 
 # --- Detect DSWT occurrence and write to csv if file does not already exist
 for year in years:
-    input_dir = f'{main_input_dir}{year}/'
-    output_file = f'{output_dir}{model}_{year}_{domain}.csv'
+    input_dir = f'{model_input_dir}{year}/'
+    output_dswt = f'{output_dir}dswt_{model}_{year}_{domain}.csv'
+    output_transport = f'{output_dir}cross-transport_{model}_{year}_{domain}.csv'
     
-    if not os.path.exists(output_file):
-        write_daily_mean_dswt_fraction_to_csv(input_dir, files_contain, grid_file,
-                                            transects_file, output_file,
-                                            lon_range=lon_range, lat_range=lat_range)
-    else:
-        log.info(f'Output file already exists, using existing file: {output_file}')
+    # if not os.path.exists(output_dswt) or not os.path.exists(output_transport):
+    transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
+    
+    roms_files = select_input_files(input_dir, files_contain)
+    roms_files.sort()
+    
+    time = []
+    f_dswt = []
+    cross_dswt = []
+    cross_bottom = []
+    cross_surface = []
+    cross_interior = []
+    for file in roms_files:
+        # Load ROMS data
+        ds_roms = load_roms_data(file, grid_file)
+        
+        if lon_range is not None and lat_range is not None: # does this make computation faster?
+            ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
+            
+        # Get daily mean percentage of DSWT occurrence along transects
+        # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
+        f_dswt_daily, transport_daily = calculate_mean_dswt_along_all_transects(ds_roms, transects, config)
+        f_dswt.append(f_dswt_daily)
+        ocean_time0 = pd.to_datetime(ds_roms.ocean_time.values[0])
+        time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
+
+    # Write to output file
+    log.info(f'Writing daily fraction DSWT occurrence to file: {output_dswt}')
+    time = np.array(time).flatten()
+    f_dswt = np.array(f_dswt).flatten()
+    df = pd.DataFrame(np.array([time, f_dswt]).transpose(), columns=['time', 'f_dswt'])
+    df.to_csv(output_dswt, index=False)
+
+    # else:
+    #     log.info(f'Output file already exists, using existing file: {output_dswt}')

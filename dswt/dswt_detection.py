@@ -2,17 +2,12 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
-from readers.read_ocean_data import load_roms_data, select_roms_transect
+from readers.read_ocean_data import select_roms_transect
+from dswt.cross_shelf_transport import calculate_dswt_cross_shelf_transport_along_transect
 from tools.config import Config
 from itertools import groupby
 import numpy as np
 import xarray as xr
-import json
-
-minimum_drhodz_default = 0.02
-minimum_p_cells_default = 0.1
-drhodz_depth_p_default = 0.5
-filter_depth_default = 100.
 
 def calculate_horizontal_density_gradient_along_transect(transect_ds:xr.Dataset) -> float:
     drho = np.diff(transect_ds.depth_mean_density.values, axis=1)
@@ -110,6 +105,9 @@ def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, 
                                          'lon_ocean': lon_ocean,
                                          'lat_ocean': lat_ocean}
         
+        dswt_cross_transport = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, transects[transect_name], l_dswt, config)
+        transects_dswt[transect_name]['transport'] = dswt_cross_transport
+        
     return transects_dswt    
 
 def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict, config:Config) -> float:
@@ -117,9 +115,12 @@ def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict, confi
     transect_names = list(transects_dswt.keys())
     
     l_dswt = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
+    transport = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
     for i, t in enumerate(transect_names):
         l_dswt[:, i] = transects_dswt[t]['l_dswt']
+        transport[:, i] = transects_dswt[t]['transport']
     
     mean_dswt = np.nanmean(l_dswt)
+    overall_transport = np.nansum(transport)
     
-    return mean_dswt
+    return mean_dswt, overall_transport
