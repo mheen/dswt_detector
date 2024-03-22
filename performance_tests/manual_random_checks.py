@@ -6,9 +6,10 @@ from tools.files import get_dir_from_json, create_dir_if_does_not_exist
 from readers.read_ocean_data import load_roms_data, select_input_files
 from transects import get_transects_dict_from_json, get_transects_in_lon_lat_range, get_specific_transect_data
 from dswt.dswt_detection import determine_dswt_along_transect
-from performance_tests.plot_dswt_check import plot_dswt_check
+from plot_tools.dswt import transects_plot
 from tools import log
 
+import matplotlib.pyplot as plt
 from datetime import date
 import random
 import pandas as pd
@@ -84,8 +85,10 @@ for i in range(n_files_to_check):
                         transect_name = random.choice(transect_names)
 
             transect_ds = get_specific_transect_data(roms_ds, transects, transect_name)
-            plot_dswt_check(transect_ds, t)
-            
+
+            fig = plt.figure(figsize=(6, 8))
+            fig = transects_plot(transect_ds, t, fig, 3, 2, 1, set_vlim=False)
+            plt.show()
             
             manual_input = input('DSWT True/False (t/f): ')
             manual_dswt = True if manual_input.lower().startswith('t') else False

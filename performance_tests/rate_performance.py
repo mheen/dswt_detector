@@ -2,11 +2,12 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
-from performance_tests.plot_dswt_check import plot_dswt_check
+from plot_tools.dswt import transects_plot
 from readers.read_ocean_data import select_input_files, load_roms_data
 from transects import get_transects_in_lon_lat_range, get_specific_transect_data
 from tools.files import get_dir_from_json
 from tools import log
+import matplotlib.pyplot as plt
 from datetime import datetime
 import pandas as pd
 import numpy as np
@@ -84,7 +85,9 @@ if recheck_differences == True:
         t = np.where(roms_times == time)[0][0]
         
         transect_ds = get_specific_transect_data(roms_ds, transects, transect)
-        plot_dswt_check(transect_ds, t)
+        fig = plt.figure(figsize=(6, 8))
+        fig = transects_plot(transect_ds, t, fig, 3, 2, 1, set_vlim=False)
+        plt.show()
         
         manual_input_str = input('DSWT True/False (t/f): ')
         manual_input = True if manual_input_str.lower().startswith('t') else False
