@@ -1,6 +1,6 @@
 from readers.read_ocean_data import select_roms_transect
 from tools.roms import get_eta_xi_along_transect, find_eta_xi_covering_lon_lat_box
-from tools.coordinates import get_bearing_between_points
+from tools.coordinates import get_bearing_between_points, get_distance_between_points
 from tools import log
 
 import numpy as np
@@ -152,6 +152,43 @@ def generate_transects_json_file(ds:xr.Dataset, output_path:str):
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(transects, f, ensure_ascii=False, indent=4)
 
+# !!! FIX !!! Determining the transect "width" is a bit of a hack,
+# see if it works out alright (compared to overall cross-shelf transport
+# just along a contour line) and if not see if there is a better
+# way to do this.
+def calculate_transect_width(transects:dict) -> dict:
+    '''Approximating transect width by determining the distance
+    between consecutive transect ocean starting points. I am using
+    ocean points because the transects are built from the continental
+    shelf towards land and should be pretty much equidistant along
+    the shelf but not necessarily along land, depending on the angle
+    between the shelf and land. This should be about the same size
+    as a grid cell because that is how the transects are built.'''
+    
+    transect_names = list(transects.keys())
+    transect_names.sort()
+    
+    for i in range(len(transect_names)-1):
+        lon1 = transects[transect_names[i]]['lon_ocean']
+        lat1 = transects[transect_names[i]]['lat_ocean']
+        lon2 = transects[transect_names[i+1]]['lon_ocean']
+        lat2 = transects[transect_names[i+1]]['lat_ocean']
+        
+        if i == 0:
+            ds = get_distance_between_points(lon1, lat1, lon2, lat2)
+        else:
+            lon0 = transects[transect_names[i-1]]['lon_ocean']
+            lat0 = transects[transect_names[i-1]]['lat_ocean']
+            ds0 = get_distance_between_points(lon0, lat0, lon1, lat1)
+            ds1 = get_distance_between_points(lon1, lat1, lon2, lat2)
+            ds = (ds0+ds1)/2
+        
+        transects[transect_names[i]]['width'] = ds
+    
+    transects[transect_names[i+1]]['width'] = ds # same width for last as second-to-last transect
+        
+    return transects
+
 def get_transects_dict_from_json(transects_file:str) -> dict:
 
     with open(transects_file, 'r') as f:
@@ -167,6 +204,8 @@ def get_transects_dict_from_json(transects_file:str) -> dict:
        
         transects[transect_names[i]] = {'lon_land': lon_land, 'lat_land': lat_land,
                                         'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
+    
+    transects = calculate_transect_width(transects) # add width to transects dict
         
     return transects
 
