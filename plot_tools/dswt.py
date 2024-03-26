@@ -70,10 +70,16 @@ def add_alpha_to_transect_parts_not_used_dswt_detection(ax:plt.axes, transect_ds
 
 def plot_vertical_lines_in_transect(ax:plt.axes, transect_ds:xr.Dataset,
                                     variable:str, t:int,
-                                    vmax:float, color='k') -> plt.axes:
+                                    vmax:float, color='k',
+                                    shading='nearest') -> plt.axes:
     d_dist = np.diff(transect_ds.distance.values)
     for i in range(len(transect_ds.distance)-1):
-        ax.plot(transect_ds[variable][t, :, i]*d_dist[i]/vmax+transect_ds.distance[i], transect_ds.z_rho[:, i], '-', color=color, linewidth=0.5)
+        if shading == 'nearest': # this is default for pcolormesh when x,y and c have same size (means pcolormesh is centered)
+            dx = transect_ds.distance[i]-d_dist[i]/2 # shifting 0 point to edge of pcolor 'cell'
+        else:
+            dx = transect_ds.distance[i]
+        x_scaled = (transect_ds[variable][t, :, i]-np.nanmin(transect_ds[variable][t, :, i]))*d_dist[i]/vmax+dx
+        ax.plot(x_scaled, transect_ds.z_rho[:, i], '-', color=color, linewidth=0.5)
         
     return ax
 
