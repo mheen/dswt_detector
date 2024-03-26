@@ -14,7 +14,8 @@ import xarray as xr
 # User input
 # --------------------------------------------------------
 model = 'cwa'
-years = np.arange(2000, 2024)
+# years = np.arange(2000, 2024)
+years = [2017]
 
 # --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
@@ -64,75 +65,45 @@ else:
 # Detect dense shelf water transport &
 # Calculate total cross-shelf transport
 # --------------------------------------------------------
-def write_daily_mean_dswt_fraction_to_csv(input_dir:str, files_contain:str, grid_file:str,
-                                          transects_file:str, output_file:str,
-                                          lon_range=None, lat_range=None):
-    
-    transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
-    
-    roms_files = select_input_files(input_dir, files_contain)
-    roms_files.sort()
-
-    time = []
-    f_dswt = []
-    for file in roms_files:
-        # Load ROMS data
-        ds = load_roms_data(file, grid_file)
-        
-        if lon_range is not None and lat_range is not None: # does this make computation faster?
-            ds = select_roms_subset(ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
-            
-        # Get daily mean percentage of DSWT occurrence along transects
-        # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
-        f_dswt.append(calculate_mean_dswt_along_all_transects(ds, transects, config))
-        ocean_time0 = pd.to_datetime(ds.ocean_time.values[0])
-        time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
-
-    # Write to output file
-    log.info(f'Writing daily fraction DSWT occurrence to file: {output_file}')
-    time = np.array(time).flatten()
-    f_dswt = np.array(f_dswt).flatten()
-    df = pd.DataFrame(np.array([time, f_dswt]).transpose(), columns=['time', 'f_dswt'])
-    df.to_csv(output_file, index=False)
-
 # --- Detect DSWT occurrence and write to csv if file does not already exist
 for year in years:
     input_dir = f'{model_input_dir}{year}/'
     output_dswt = f'{output_dir}dswt_{model}_{year}_{domain}.csv'
-    output_transport = f'{output_dir}cross-transport_{model}_{year}_{domain}.csv'
     
-    # if not os.path.exists(output_dswt) or not os.path.exists(output_transport):
-    transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
-    
-    roms_files = select_input_files(input_dir, files_contain)
-    roms_files.sort()
-    
-    time = []
-    f_dswt = []
-    cross_dswt = []
-    cross_bottom = []
-    cross_surface = []
-    cross_interior = []
-    for file in roms_files:
-        # Load ROMS data
-        ds_roms = load_roms_data(file, grid_file)
+    if not os.path.exists(output_dswt):
+        transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
         
-        if lon_range is not None and lat_range is not None: # does this make computation faster?
-            ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
+        roms_files = select_input_files(input_dir, files_contain)
+        roms_files.sort()
+        
+        time = []
+        f_dswt = []
+        cross_dswt = []
+        vel_dswt = []
+        cross_bottom = []
+        cross_surface = []
+        cross_interior = []
+        for file in roms_files:
+            # Load ROMS data
+            ds_roms = load_roms_data(file, grid_file)
             
-        # Get daily mean percentage of DSWT occurrence along transects
-        # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
-        f_dswt_daily, transport_daily = calculate_mean_dswt_along_all_transects(ds_roms, transects, config)
-        f_dswt.append(f_dswt_daily)
-        ocean_time0 = pd.to_datetime(ds_roms.ocean_time.values[0])
-        time.append(datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day))
+            if lon_range is not None and lat_range is not None: # does this make computation faster?
+                ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
+                
+            # Get daily mean percentage of DSWT occurrence along transects
+            # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
+            ocean_time0 = pd.to_datetime(ds_roms.ocean_time.values[0])
+            f_dswt_daily, transport_daily, vel_daily = calculate_mean_dswt_along_all_transects(ds_roms, transects, config)
+            
+            data = np.array([datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day),
+                             f_dswt_daily, transport_daily, vel_daily])
+            columns = ['time', 'f_dswt', 'dswt_transport', 'dswt_velocity']
+            df = pd.DataFrame(np.expand_dims(data, 0), columns=columns)
+            
+            if os.path.exists(output_dswt):
+                df.to_csv(output_dswt, mode='a', header=False, index=False)
+            else:
+                df.to_csv(output_dswt, index=False)
 
-    # Write to output file
-    log.info(f'Writing daily fraction DSWT occurrence to file: {output_dswt}')
-    time = np.array(time).flatten()
-    f_dswt = np.array(f_dswt).flatten()
-    df = pd.DataFrame(np.array([time, f_dswt]).transpose(), columns=['time', 'f_dswt'])
-    df.to_csv(output_dswt, index=False)
-
-    # else:
-    #     log.info(f'Output file already exists, using existing file: {output_dswt}')
+    else:
+        log.info(f'Output file already exists, using existing file: {output_dswt}')
