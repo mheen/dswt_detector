@@ -2,6 +2,7 @@ from readers.read_ocean_data import select_roms_transect
 from tools.roms import get_eta_xi_along_transect, find_eta_xi_covering_lon_lat_box
 from tools.coordinates import get_bearing_between_points, get_distance_between_points
 from tools import log
+from tools.files import get_dir_from_json
 
 import numpy as np
 import xarray as xr
@@ -148,6 +149,8 @@ def generate_transects_json_file(ds:xr.Dataset, output_path:str):
             continue
         transects[f't{i}'] = {'lon_land': lon_land, 'lat_land': lat_land, 'lon_ocean': shelf_lons[i], 'lat_ocean': shelf_lats[i]}
     
+    transects = calculate_transect_width(transects)
+    
     log.info(f'Writing transects to json file: {output_path}')
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(transects, f, ensure_ascii=False, indent=4)
@@ -247,3 +250,9 @@ def get_specific_transect_data(roms_ds:xr.Dataset, transects:dict, transect_name
 # add plotting function to check transects?
 
 # add function that determines how many grid cells are not covered by transects?
+
+if __name__ == '__main__':
+    model_input_dir = get_dir_from_json('cwa')
+    grid_file = f'{model_input_dir}grid.nc'
+    grid_ds = xr.open_dataset(grid_file)
+    generate_transects_json_file(grid_ds, 'input/transects/cwa_transects.json')
