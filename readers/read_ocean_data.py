@@ -73,6 +73,9 @@ def add_variables_to_roms_data(roms_ds:xr.Dataset) -> xr.Dataset:
     z_w = get_z(roms_ds.Vtransform.values, roms_ds.s_w.values, roms_ds.h.values, roms_ds.Cs_w.values, roms_ds.hc.values)
     roms_ds.coords['z_w'] = (['s_w', 'eta_rho', 'xi_rho'], z_w)
     
+    delta_z = np.diff(z_w, axis=0)
+    roms_ds['delta_z'] = (['s_rho', 'eta_rho', 'xi_rho'], delta_z)
+    
     # --- calculate seawater density if temperature and salinity available
     if 'salt' in roms_ds.variables and 'temp' in roms_ds.variables:
         density = calculate_density(roms_ds.salt.values, roms_ds.temp.values, -roms_ds.z_rho.values)
