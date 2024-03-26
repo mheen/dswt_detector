@@ -1,6 +1,7 @@
 from readers.read_ocean_data import load_roms_data, select_roms_subset, select_input_files
 from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
 from dswt.dswt_detection import calculate_mean_dswt_along_all_transects
+from dswt.cross_shelf_transport import calculate_daily_mean_cross_shelf_transport_at_depth_contour
 from tools.config import Config, read_config
 from tools import log
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
@@ -90,14 +91,33 @@ for year in years:
             if lon_range is not None and lat_range is not None: # does this make computation faster?
                 ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
                 
-            # Get daily mean percentage of DSWT occurrence along transects
+            # --- Get daily mean percentage of DSWT occurrence and DSWT transport & velocity along transects ---
             # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
             ocean_time0 = pd.to_datetime(ds_roms.ocean_time.values[0])
             f_dswt_daily, transport_daily, vel_daily = calculate_mean_dswt_along_all_transects(ds_roms, transects, config)
             
+            # --- Get daily mean cross-shelf transport for different depth layers ---
+            n_bottom = np.ceil(config.cross_shelf_bottom_layers_percentage*len(ds_roms.s_rho))
+            n_surface = np.ceil(config.cross_shelf_surface_layers_percentage*len(ds_roms.s_rho))
+            n_interior = len(ds_roms.s_rho)-n_bottom-n_surface
+            s_bottom = np.arange(0, n_bottom, 1)
+            s_surface = np.arange(len(ds_roms.s_rho)-n_surface, len(ds_roms.s_rho), 1)
+            s_interior = np.arange(n_bottom, len(ds_roms.s_rho)-n_surface)
+            
+            transport_bottom, vel_bottom = calculate_daily_mean_cross_shelf_transport_at_depth_contour(ds_roms, config.cross_shelf_transport_depth, s_bottom)
+            transport_surface, vel_surface = calculate_daily_mean_cross_shelf_transport_at_depth_contour(ds_roms, config.cross_shelf_transport_depth, s_surface)
+            transport_interior, vel_interior = calculate_daily_mean_cross_shelf_transport_at_depth_contour(ds_roms, config.cross_shelf_transport_depth, s_interior)
+            
+            # --- Save to csv file ---
             data = np.array([datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day),
-                             f_dswt_daily, transport_daily, vel_daily])
-            columns = ['time', 'f_dswt', 'dswt_transport', 'dswt_velocity']
+                             f_dswt_daily, transport_daily, vel_daily,
+                             transport_bottom, vel_bottom,
+                             transport_surface, vel_surface,
+                             transport_interior, vel_interior])
+            columns = ['time', 'f_dswt', 'dswt_transport', 'dswt_velocity',
+                       'bottom_transport', 'bottom_velocity',
+                       'surface_transport', 'surface_velocity',
+                       'interior_transport', 'interior_velocity']
             df = pd.DataFrame(np.expand_dims(data, 0), columns=columns)
             
             if os.path.exists(output_dswt):
