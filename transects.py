@@ -204,9 +204,11 @@ def get_transects_dict_from_json(transects_file:str) -> dict:
         lat_land = all_transects[transect_names[i]]['lat_land']
         lon_ocean = all_transects[transect_names[i]]['lon_ocean']
         lat_ocean = all_transects[transect_names[i]]['lat_ocean']
+        width = all_transects[transect_names[i]]['width']
        
         transects[transect_names[i]] = {'lon_land': lon_land, 'lat_land': lat_land,
-                                        'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
+                                        'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean,
+                                        'width':width}
         
     return transects
 
