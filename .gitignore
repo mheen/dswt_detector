@@ -5,6 +5,7 @@
 *.jpg
 
 !input/plot_settings.json
+!input/transects/*_transects.json
 !performance_tests/cwa_2017_performance_comparison.csv
 
 # Byte-compiled / optimized / DLL files
