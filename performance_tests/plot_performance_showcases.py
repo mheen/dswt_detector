@@ -5,10 +5,13 @@ sys.path.insert(1, parent)
 from readers.read_ocean_data import load_roms_data
 from readers.read_meteo_data import load_era5_data, select_era5_in_closest_point, get_daily_mean_wind_data
 from dswt.dswt_detection import determine_dswt_along_transect
+from dswt.cross_shelf_transport import calculate_dswt_cross_shelf_transport_along_transect, add_down_transect_velocity_to_ds
 from transects import get_specific_transect_data, get_transects_in_lon_lat_range
 from plot_tools.dswt import plot_map, transects_plot, plot_transect
+from plot_tools.dswt import plot_vertical_lines_in_transect, add_alpha_to_transect_parts_not_used_dswt_detection
 from plot_tools.general import add_subtitle
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
+from tools.config import read_config, Config
 from datetime import datetime
 import numpy as np
 import json
@@ -16,13 +19,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cmocean as cm
+import xarray as xr
 
 year = 2017
 
 transects_file = 'input/transects/cwa_transects.json'
 transects = get_transects_in_lon_lat_range(transects_file, [114.0, 116.0], [-33.0, -31.0])
 
-main_input_dir = get_dir_from_json('cwa-roms')
+main_input_dir = get_dir_from_json('cwa')
 input_dir = f'{main_input_dir}{year}/'
 grid_file = f'{main_input_dir}grid.nc'
 
@@ -34,25 +38,23 @@ plot_lat_range = [-33.0, -31.5]
 meridians = [114.5, 115.5]
 parallels = [-33.0, -32.0, -31.0]
 
-dates = [datetime(2017, 1, 15), # no DSWT: positive drhodx
-         datetime(2017, 2, 22), # no DSWT: negative drhodx because of higher salinity along coast, but vertically mixed water column
-         datetime(2017, 6, 11), # DSWT
-         datetime(2017, 9, 8), # manual DSWT, algorithm no DSWT (because not enough consecutive cells)
-         datetime(2017, 5, 21)] # manual no DSWT, algorithm DSWT
-transects_to_plot = ['t201', 't197', 't171', 't209', 't188']
-time_to_plot = [0, 0, 6, 0, 5]
+cmap_density = cm.cm.thermal_r
+cmap_temp = 'RdYlBu_r'
+cmap_salt = cm.cm.haline
 
-for i, date in enumerate(dates):
-    output_path = f'{output_dir}cwa_{date.strftime("%Y%m%d")}_{transects_to_plot[i]}.jpg'
-    
+vmin_drhodz = 0.0
+vmax_drhodz = 0.02
+cmap_drhodz = 'bone_r'
+
+wind_color = '#f1f5f9'
+land_color = '#d2d2d2'
+
+def dswt_detection(date:datetime, transect_to_plot:int, time_to_plot:int):  
     # -- Load ROMS data
     input_path = f'{input_dir}cwa_{date.strftime("%Y%m%d")}_03__his.nc'
     roms_ds = load_roms_data(input_path, grid_file=grid_file)
-    # # For interactive plotting:
-    # transects_dswt = determine_dswt_along_multiple_transects(roms_ds, transects_file)
-    # plot_dswt_maps_transects(roms_ds, transects_file, transects_dswt)
     
-    transect_ds = get_specific_transect_data(roms_ds, transects, transects_to_plot[i])
+    transect_ds = get_specific_transect_data(roms_ds, transects, transect_to_plot)
     l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds)
     
     # --- Load ERA5 wind data
@@ -62,21 +64,6 @@ for i, date in enumerate(dates):
     point_ds = select_era5_in_closest_point(era5_ds, lon_p, lat_p)
     time, _, _, wind_vel, wind_dir = get_daily_mean_wind_data(point_ds)
     i_wind = np.where(time == date)[0][0]
-    
-    # ------------------------------------------------------------------
-    # Plot
-    # ------------------------------------------------------------------
-    
-    cmap_density = cm.cm.thermal_r
-    cmap_temp = 'RdYlBu_r'
-    cmap_salt = cm.cm.haline
-
-    vmin_drhodz = 0.0
-    vmax_drhodz = 0.02
-    cmap_drhodz = 'bone_r'
-
-    wind_color = '#f1f5f9'
-    land_color = '#d2d2d2'
     
     with open('input/plot_settings.json', 'r') as f:
         all_plot_ranges = json.load(f)
@@ -91,20 +78,20 @@ for i, date in enumerate(dates):
     n_rows = 6
     n_cols = 2
     
-    t_dswt = time_to_plot[i]
+    t_dswt = time_to_plot
     
     # --- Surface density map
     ax1 = plt.subplot(n_rows, n_cols, (1, 3), projection=ccrs.PlateCarree())
     ax1, _ = plot_map(ax1, roms_ds, transect_ds, roms_ds.density.values[t_dswt, -1, :, :],
-                      plot_lon_range, plot_lat_range, parallels, meridians,
-                      vmin_density, vmax_density, cmap_density)
+                    plot_lon_range, plot_lat_range, parallels, meridians,
+                    vmin_density, vmax_density, cmap_density)
     ax1 = add_subtitle(ax1, '(a) Surface density')
     
     # --- Bottom density map
     ax2 = plt.subplot(6, 2, (2, 4), projection=ccrs.PlateCarree())
     ax2, _ = plot_map(ax2, roms_ds, transect_ds, roms_ds.density.values[t_dswt, 0, :, :],
-                      plot_lon_range, plot_lat_range, parallels, meridians,
-                      vmin_density, vmax_density, cmap_density, transect_color='#cccccc')
+                    plot_lon_range, plot_lat_range, parallels, meridians,
+                    vmin_density, vmax_density, cmap_density, transect_color='#cccccc')
     ax2 = add_subtitle(ax2, '(b) Bottom density')
     ax2.set_yticklabels([])
     
@@ -139,3 +126,112 @@ for i, date in enumerate(dates):
         # save figure
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
+
+def dswt_cross_shelf_transport(transect_ds:xr.Dataset,
+                               i_time:int,
+                               i_dists:list[int],
+                               i_depths:list[int],
+                               config:Config,
+                               transport:float,
+                               velocity:float,
+                               output_path=None,
+                               show=True):
+    
+    x = [transect_ds.distance.values[i_dists[0]], transect_ds.distance.values[i_dists[-1]]]
+    y = [transect_ds.z_rho.values[i_depths[-1], i_dists[0]], transect_ds.z_rho.values[0, i_dists[-1]]]
+
+    def plot_box_for_cross_transport(ax:plt.axes, x:list, y:list) -> plt.axes:
+        ax.plot([x[0], x[1], x[1], x[0], x[0]], [y[0], y[0], y[1], y[1], y[0]], '-', color='#C70039', linewidth=0.5)
+        return ax
+
+    fig = plt.figure(figsize=(8, 12))
+    ax1 = plt.subplot(3, 1, 1)
+    ax1, c1 = plot_transect(ax1, transect_ds, 'density', i_time, 1024.8, 1025.4, cmap_density)
+    cbar1 = plt.colorbar(c1)
+    cbar1.set_label('Density (kg/m$^3$)')
+    ax1 = plot_vertical_lines_in_transect(ax1, transect_ds, 'vertical_density_gradient', i_time, 0.03)
+    ax1 = add_alpha_to_transect_parts_not_used_dswt_detection(ax1, transect_ds, config)
+    ax1.plot([transect_ds.distance[0], transect_ds.distance[-1]], [config.dswt_cross_shelf_transport_depth_range[0], config.dswt_cross_shelf_transport_depth_range[0]], '--k')
+    ax1.plot([transect_ds.distance[0], transect_ds.distance[-1]], [config.dswt_cross_shelf_transport_depth_range[0], config.dswt_cross_shelf_transport_depth_range[0]], '--k')
+    ax1 = plot_box_for_cross_transport(ax1, x, y)
+    ax1 = add_subtitle(ax1, '(a) Density along transect', location='lower left')
+
+    ax2 = plt.subplot(3, 1, 2)
+    ax2, c2 = plot_transect(ax2, transect_ds, 'vertical_density_gradient', i_time, 0, 0.03, 'bone_r')
+    cbar2 = plt.colorbar(c2)
+    cbar2.set_label('Vertical density gradient')
+    ax2 = plot_vertical_lines_in_transect(ax2, transect_ds, 'vertical_density_gradient', i_time, 0.03, color='w')
+    ax2 = add_alpha_to_transect_parts_not_used_dswt_detection(ax2, transect_ds, config)
+    ax2 = plot_box_for_cross_transport(ax2, x, y)
+    ax2 = add_subtitle(ax2, '(b) Vertical density gradient along transect', location='lower left')
+
+    ax3 = plt.subplot(3, 1, 3)
+    ax3, c3 = plot_transect(ax3, transect_ds, 'down_transect_vel', i_time, -0.2, 0.2, 'RdYlBu_r')
+    cbar3 = plt.colorbar(c3)
+    cbar3.set_label('Down-transect velocity')
+    ax3 = plot_vertical_lines_in_transect(ax3, transect_ds, 'vertical_density_gradient', i_time, 0.03)
+    ax3 = add_alpha_to_transect_parts_not_used_dswt_detection(ax3, transect_ds, config)
+    ax3 = plot_box_for_cross_transport(ax3, x, y)
+    cross_text = f'Mean velocity {np.round(velocity, 2)} m/s, total transport: {np.round(transport, 0).astype(int)} m$^3$'
+    ax3 = add_subtitle(ax3, f'(c) Cross-shelf velocity along transect\n    {cross_text}',
+                       location='lower left')
+
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    
+    if show is True:
+        plt.show()
+    else:
+        plt.close()
+
+if __name__ == '__main__':
+    plot_dswt_detection = False
+    plot_cross_transport = True
+    
+    if plot_dswt_detection == True:
+        # ------------------------------------------------------
+        # DSWT detection examples
+        # ------------------------------------------------------
+        dates = [datetime(2017, 1, 15), # no DSWT: positive drhodx
+                datetime(2017, 2, 22), # no DSWT: negative drhodx because of higher salinity along coast, but vertically mixed water column
+                datetime(2017, 6, 11), # DSWT
+                datetime(2017, 9, 8), # manual DSWT, algorithm no DSWT (because not enough consecutive cells)
+                datetime(2017, 5, 21)] # manual no DSWT, algorithm DSWT
+        transects_to_plot = ['t201', 't197', 't171', 't209', 't188']
+        time_to_plot = [0, 0, 6, 0, 5]
+
+        for i in range(len(dates)):
+            output_path = f'{output_dir}cwa_dswt-detection_{dates[i].strftime("%Y%m%d")}_{transects_to_plot[i]}.jpg'
+            dswt_detection(dates[i], transects_to_plot[i], time_to_plot[i], output_path)
+
+    if plot_cross_transport == True:
+        # ------------------------------------------------------
+        # Cross-shelf transport examples
+        # ------------------------------------------------------
+        dates = [datetime(2017, 5, 14)]
+        transects_to_plot = ['t135']
+        time_to_plot = [3]
+        
+        config = read_config('cwa')
+        
+        for i in range(len(dates)):
+            output_path = f'{output_dir}cwa_cross-transport_{dates[i].strftime("%Y%m%d")}_{transects_to_plot[i]}.jpg'
+            # -- Load ROMS data
+            input_path = f'{input_dir}cwa_{dates[i].strftime("%Y%m%d")}_03__his.nc'
+            roms_ds = load_roms_data(input_path, grid_file=grid_file)
+            
+            transect = next(transects[item] for item in transects if item==transects_to_plot[i])
+            
+            transect_ds = get_specific_transect_data(roms_ds, transects, transects_to_plot[i])
+            transect_ds = add_down_transect_velocity_to_ds(transect_ds)
+            l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
+            cross_transport, cross_vel = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, transect, l_dswt, config)
+            
+            i_dists = np.where(np.logical_and(transect_ds.h.values >= config.dswt_cross_shelf_transport_depth_range[0],
+                                transect_ds.h.values <= config.dswt_cross_shelf_transport_depth_range[1]))[0] # locations for depth range
+            n_z_layers = len(transect_ds.z_rho)
+            n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage)) # depth layers to consider for DSWT
+            i_depths = np.where(transect_ds.vertical_density_gradient[i, 0:n_depth_layers, i_dists[0]] >= config.minimum_drhodz)[0]
+            dswt_cross_shelf_transport(transect_ds, time_to_plot[i], i_dists, i_depths, config,
+                                       cross_transport[time_to_plot[i]], cross_vel[time_to_plot[i]],
+                                       output_path=output_path, show=False)
