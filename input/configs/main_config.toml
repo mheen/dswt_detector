@@ -8,5 +8,5 @@ minimum_drhodz = 0.01
 drhodz_depth_percentage = 0.5
 minimum_percentage_consecutive_cells = 0.1
 filter_depth = 100.0
-dswt_cross_shelf_transport_depth_range = [60.0, 50.0]
+dswt_cross_shelf_transport_depth_range = [50.0, 60.0]
 # minimum_drhodz NO DEFAULT

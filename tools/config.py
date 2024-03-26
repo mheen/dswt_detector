@@ -19,10 +19,16 @@ def read_config(model:str, input_path='input/configs/main_config.toml') -> dict:
     for k,v in full_config[model].items():
         config[k] = v
         
+    dswt_cross_shelf_transport_depth_range = config['dswt_cross_shelf_transport_depth_range']
+    if dswt_cross_shelf_transport_depth_range[0] > dswt_cross_shelf_transport_depth_range[1]:
+        # swap order so that lower depth value comes first
+        dswt_cross_shelf_transport_depth_range = [dswt_cross_shelf_transport_depth_range[1],
+                                                  dswt_cross_shelf_transport_depth_range[0]]
+        
     return Config(
         drhodz_depth_percentage = config['drhodz_depth_percentage'],
         minimum_percentage_consecutive_cells = config['minimum_percentage_consecutive_cells'],
         filter_depth = config['filter_depth'],
-        dswt_cross_shelf_transport_depth_range = config['dswt_cross_shelf_transport_depth_range'],
+        dswt_cross_shelf_transport_depth_range = dswt_cross_shelf_transport_depth_range,
         minimum_drhodz = config['minimum_drhodz']
     )
