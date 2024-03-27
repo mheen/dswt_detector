@@ -33,7 +33,7 @@ def _get_center_label_width_for_multi_monthly_bar_plot(time:np.ndarray[datetime]
     str_labels = np.array([t.strftime(label_format) for t in time])
     center_times = []
     for n in range(n_bars):
-        center_times.append(np.array(time+n/n_bars*dt-1/n_bars*dt/2))
+        center_times.append(np.array(time+(n+1)/n_bars*dt-1/n_bars*dt/2))
     width = 0.8*np.array([1/n_bars*t.days for t in dt])
     return center_times, width, str_time, str_labels
 
