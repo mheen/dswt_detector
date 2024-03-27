@@ -169,7 +169,6 @@ def calculate_transect_width(transects:dict) -> dict:
     as a grid cell because that is how the transects are built.'''
     
     transect_names = list(transects.keys())
-    transect_names.sort()
     
     for i in range(len(transect_names)-1):
         lon1 = transects[transect_names[i]]['lon_ocean']
