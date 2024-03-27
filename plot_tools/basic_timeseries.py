@@ -25,6 +25,18 @@ def _get_center_label_width_for_monthly_bar_plot(time:np.ndarray[datetime], labe
     width = 0.8*np.array([dt.days for dt in np.diff(time_plus)])
     return center_time, str_time, width
 
+def _get_center_label_width_for_multi_monthly_bar_plot(time:np.ndarray[datetime], n_bars:int, label_format='%b') -> tuple:
+    time = np.array([datetime(t.year, t.month, 1) for t in time]) # in case time is centered to middle of a month
+    time_plus = np.append(time, add_month_to_time(time[-1], 1))
+    dt = np.diff(time_plus)
+    str_time = np.array(time+dt/2)
+    str_labels = np.array([t.strftime(label_format) for t in time])
+    center_times = []
+    for n in range(n_bars):
+        center_times.append(np.array(time+n/n_bars*dt-1/n_bars*dt/2))
+    width = 0.8*np.array([1/n_bars*t.days for t in dt])
+    return center_times, width, str_time, str_labels
+
 def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[float],
                                   ylabel='', ylim=None,
                                   color='#25419e', c_change=None,
@@ -111,3 +123,28 @@ def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
         plt.show()
     else:
         return ax, center_time, str_time
+    
+def plot_multi_bar_monthly_histogram(time:np.ndarray[datetime], values:list[np.ndarray[float]], colors:list,
+                                     labels:list, ylabel='', ylim=None, legend_loc='upper right',
+                                     ax=None, show=True) -> plt.axes:
+    center_times, width, str_time, str_labels = _get_center_label_width_for_multi_monthly_bar_plot(time, len(values))
+    
+    if ax is None:
+        ax = plt.axes()
+        
+    for i in range(len(values)):
+        ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i])
+    
+    ax.set_xticks(str_time)
+    ax.set_xticklabels(str_labels)
+    
+    l = ax.legend(loc=legend_loc)
+    
+    ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    
+    if show is True:
+        plt.show()
+    else:
+        return ax, l
