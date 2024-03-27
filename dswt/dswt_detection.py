@@ -8,6 +8,7 @@ from tools.config import Config
 from itertools import groupby
 import numpy as np
 import xarray as xr
+import pandas as pd
 
 def calculate_horizontal_density_gradient_along_transect(transect_ds:xr.Dataset) -> float:
     drho = np.diff(transect_ds.depth_mean_density.values, axis=1)
@@ -83,14 +84,15 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config):
     # DSWT along a transect when both condition 1 and condition 2 hold
     l_dswt = np.logical_and(condition1, condition2)
     
-    return l_dswt, condition1, condition2, drhodz_max, drhodz_cells
+    return l_dswt, drhodx, condition2, drhodz_max, drhodz_cells
 
-def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, config:Config) -> dict:
+def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, config:Config) -> pd.DataFrame:
     
     transect_names = list(transects.keys())
     
-    transects_dswt = {}
-    for transect_name in transect_names:
+    df_transects_dswt = pd.DataFrame(index=np.arange(0, len(transect_names)), columns=['time', 'transect', 'f_dswt', 'vel_dswt', 'transport_dswt'])
+    time = pd.to_datetime(roms_ds.ocean_time.values[0]).date()
+    for i, transect_name in enumerate(transect_names):
         lon_land = transects[transect_name]['lon_land']
         lat_land = transects[transect_name]['lat_land']
         lon_ocean = transects[transect_name]['lon_ocean']
@@ -99,32 +101,26 @@ def determine_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, 
         transect_ds = select_roms_transect(roms_ds, lon_land, lat_land, lon_ocean, lat_ocean)
         l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
         
-        transects_dswt[transect_name] = {'l_dswt': l_dswt,
-                                         'lon_land': lon_land,
-                                         'lat_land': lat_land,
-                                         'lon_ocean': lon_ocean,
-                                         'lat_ocean': lat_ocean}
-        
         dswt_cross_transport, dswt_cross_vel = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, transects[transect_name], l_dswt, config)
-        transects_dswt[transect_name]['transport'] = dswt_cross_transport
-        transects_dswt[transect_name]['velocity'] = dswt_cross_vel
-        
-    return transects_dswt    
 
-def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict, config:Config) -> float:
-    transects_dswt = determine_dswt_along_multiple_transects(ds, transects, config)
-    transect_names = list(transects_dswt.keys())
+        df_transects_dswt.loc[i] = [time, transect_name, np.nanmean(l_dswt.astype(int)), np.nanmean(dswt_cross_vel), np.nansum(dswt_cross_transport)]
+        
+    return df_transects_dswt  
+
+# def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict, config:Config) -> float:
+#     transects_dswt = determine_dswt_along_multiple_transects(ds, transects, config)
+#     transect_names = list(transects_dswt.keys())
     
-    l_dswt = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
-    transport = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
-    velocity = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
-    for i, t in enumerate(transect_names):
-        l_dswt[:, i] = transects_dswt[t]['l_dswt']
-        transport[:, i] = transects_dswt[t]['transport']
-        velocity[:, i] = transects_dswt[t]['velocity']
+#     l_dswt = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
+#     transport = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
+#     velocity = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
+#     for i, t in enumerate(transect_names):
+#         l_dswt[:, i] = transects_dswt[t]['l_dswt']
+#         transport[:, i] = transects_dswt[t]['transport']
+#         velocity[:, i] = transects_dswt[t]['velocity']
     
-    mean_dswt = np.nanmean(l_dswt)
-    overall_transport = np.nansum(transport)
-    mean_velocity = np.nanmean(velocity)
+#     mean_dswt = np.nanmean(l_dswt)
+#     overall_transport = np.nansum(transport)
+#     mean_velocity = np.nanmean(velocity)
     
-    return mean_dswt, overall_transport, mean_velocity
+#     return mean_dswt, overall_transport, mean_velocity

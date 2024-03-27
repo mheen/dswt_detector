@@ -120,12 +120,12 @@ def calculate_dswt_cross_shelf_transport_along_transect(
             if len(i_depth) == 0:
                 continue # drho/dz condition not satisfied at this location along shelf
             k = i_depth[-1]
-            transport_over_depth_range.append(np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect['width']*transect_ds.dt.values) # m3
+            transport_over_depth_range.append(np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values) # m2
         
         if len(transport_over_depth_range) == 0:
             continue # drho/dz condition not satisfied over entire depth range: transport = 0
         
-        transport[i] = np.nanmean(transport_over_depth_range) # m3
+        transport[i] = np.nanmean(transport_over_depth_range) # m2 (per transect)
         mean_vel[i] = np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j]) # m/s
     
     return transport, mean_vel

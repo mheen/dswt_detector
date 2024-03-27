@@ -25,9 +25,9 @@ def select_input_files(input_dir:str, file_contains=None,
         
     return files
 
-def read_roms_data(input_paths:str, grid_file:str) -> xr.Dataset:
+def read_roms_data(input_paths:str, grid_file:str, drop_vars:list) -> xr.Dataset:
     log.info(f'Reading ROMS data from files: {input_paths}')
-    roms_ds = xr.open_mfdataset(input_paths, data_vars='minimal')
+    roms_ds = xr.open_mfdataset(input_paths, data_vars='minimal', drop_variables=drop_vars)
     
     # model dt
     dt = np.unique(np.diff(roms_ds.ocean_time).astype('timedelta64[s]').astype(float))[0]
@@ -86,8 +86,7 @@ def add_variables_to_roms_data(roms_ds:xr.Dataset) -> xr.Dataset:
     
     if 'density' in roms_ds.variables:
         # --- calculate depth mean density
-        delta_z_w = np.diff(roms_ds.z_w.values, axis=0)
-        depth_mean_density = np.sum(roms_ds.density.values*delta_z_w, axis=1)/roms_ds.h.values
+        depth_mean_density = np.sum(roms_ds.density.values*roms_ds.delta_z.values, axis=1)/roms_ds.h.values
         roms_ds['depth_mean_density'] = (['ocean_time', 'eta_rho', 'xi_rho'], depth_mean_density)
         
         # --- calculate vertical density gradient
@@ -100,7 +99,7 @@ def add_variables_to_roms_data(roms_ds:xr.Dataset) -> xr.Dataset:
         
         # --- calculate potential energy anomaly
         depth_mean_density_resized = np.repeat(depth_mean_density[:, np.newaxis, :, :], roms_ds.density.shape[1], axis=1)
-        phi = g/roms_ds.h.values*np.sum((depth_mean_density_resized-roms_ds.density.values)*roms_ds.z_rho.values*delta_z_w, axis=1)
+        phi = g/roms_ds.h.values*np.sum((depth_mean_density_resized-roms_ds.density.values)*roms_ds.z_rho.values*roms_ds.delta_z.values, axis=1)
         roms_ds['potential_energy_anomaly'] = (['ocean_time', 'eta_rho', 'xi_rho'], phi)
         
     else:
@@ -108,16 +107,16 @@ def add_variables_to_roms_data(roms_ds:xr.Dataset) -> xr.Dataset:
         
     return roms_ds
 
-def load_roms_data(input_path:str, grid_file=None) -> xr.Dataset:
-    roms_ds = read_roms_data([input_path], grid_file)
+def load_roms_data(input_path:str, grid_file=None, drop_vars=None) -> xr.Dataset:
+    roms_ds = read_roms_data([input_path], grid_file, drop_vars=drop_vars)
     roms_ds = convert_roms_u_and_v(roms_ds)
     roms_ds = add_variables_to_roms_data(roms_ds)
     
     return roms_ds
 
-def load_mf_roms_data(input_dir:str, grid_file=None, files_contain=None) -> xr.Dataset:
+def load_mf_roms_data(input_dir:str, grid_file=None, files_contain=None, drop_vars=None) -> xr.Dataset:
     input_paths = select_input_files(input_dir, file_contains=files_contain)
-    roms_ds = read_roms_data(input_paths, grid_file, files_contain)
+    roms_ds = read_roms_data(input_paths, grid_file, files_contain, drop_vars=drop_vars)
     roms_ds = convert_roms_u_and_v(roms_ds)
     roms_ds = add_variables_to_roms_data(roms_ds)
 

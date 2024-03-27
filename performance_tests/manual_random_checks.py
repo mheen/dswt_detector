@@ -92,13 +92,13 @@ for i in range(n_files_to_check):
             
             manual_input = input('DSWT True/False (t/f): ')
             manual_dswt = True if manual_input.lower().startswith('t') else False
-            l_dswt, condition1, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds)
+            l_dswt, drhodx, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds)
             
             data = np.array([filename, time, transect_name, manual_dswt, l_dswt[t],
-                             condition1[t], condition2[t], drhodz_max[t], drhodz_cells[t]])
+                             drhodx[t], condition2[t], drhodz_max[t], drhodz_cells[t]])
             df = pd.DataFrame(np.expand_dims(data, 0),
                               columns=['filename', 'time', 'transect', 'manual_dswt', 'algorithm_dswt',
-                                       'negative_drhodx', 'drhodz_condition', 'drhodz_max', 'drhodz_p_cells'])
+                                       'drhodx', 'drhodz_condition', 'drhodz_max', 'drhodz_p_cells'])
 
             # append to csv file immediately after input
             if os.path.exists(output_file):

@@ -1,6 +1,6 @@
 from readers.read_ocean_data import load_roms_data, select_roms_subset, select_input_files
 from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
-from dswt.dswt_detection import calculate_mean_dswt_along_all_transects
+from dswt.dswt_detection import determine_daily_dswt_along_multiple_transects
 from dswt.cross_shelf_transport import calculate_daily_mean_cross_shelf_transport_at_depth_contour
 from tools.config import Config, read_config
 from tools import log
@@ -10,6 +10,7 @@ import numpy as np
 from datetime import datetime
 import pandas as pd
 import xarray as xr
+from warnings import warn
 
 # --------------------------------------------------------
 # User input
@@ -35,16 +36,16 @@ files_contain = f'{model}_' # set to None if not needed
 transects_dir = 'input/transects/'
 create_dir_if_does_not_exist(transects_dir)
 
-# --- Output file info
-output_dir = f'output/{model}/'
-create_dir_if_does_not_exist(output_dir)
-
 # --- Automated domain name
 lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
 lon_range_unit = 'E' if lon_range[0] > 0 else 'W'
 lat_range_str = f'{int(abs(np.floor(lat_range[0])))}-{int(abs(np.ceil(lat_range[1])))}'
 lat_range_unit = 'S' if lat_range[0] < 0 else 'S'
 domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
+
+# --- Output file info
+output_dir = f'output/{model}_{domain}/'
+create_dir_if_does_not_exist(output_dir)
 
 # using transects for entire model domain and then selecting
 # only relevant ones within requested domain range
@@ -53,7 +54,7 @@ domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
 transects_file = f'{transects_dir}{model}_transects.json'
 
 # --------------------------------------------------------
-# Create transects
+# 1. Create transects
 # --------------------------------------------------------
 # create transects and save to .json file if file does not already exist
 if not os.path.exists(transects_file):
@@ -61,69 +62,88 @@ if not os.path.exists(transects_file):
     generate_transects_json_file(grid_ds, transects_file)
 else:
     log.info(f'Transects file already exists, using existing file: {transects_file}')
+    
+# add GUI option to show transects and remove faulty ones?
+# report sanity check for width calculation
 
 # --------------------------------------------------------
-# Detect dense shelf water transport &
-# Calculate total cross-shelf transport
+# 2. Input files check
 # --------------------------------------------------------
-# --- Detect DSWT occurrence and write to csv if file does not already exist
+# check that files contain required variables (for 1 file)
+input_dir = f'{model_input_dir}{years[0]}/'
+roms_files = select_input_files(input_dir, files_contain)
+
+required_vars = ['ocean_time', 's_rho', 's_w',
+                 'Vtransform', 'Cs_r', 'Cs_w', 'hc',
+                 'angle', 'lon_rho', 'lat_rho', 'h',
+                 'temp', 'salt', 'u', 'v']
+
+ds_roms = load_roms_data(roms_files[0], grid_file=grid_file)
+vars = list(ds_roms.keys()) + list(ds_roms.coords)
+for v in required_vars:
+    if not v in vars:
+        raise ValueError(f'Missing required ROMS variable: {v}')
+
+# check that files contain daily data
+if len(ds_roms.ocean_time) > 0:
+    hours = (pd.to_datetime(ds_roms.ocean_time.values[-1])-pd.to_datetime(ds_roms.ocean_time.values[0])).total_seconds()/(60*60)
+    if hours > 24.0:
+        raise ValueError(f'ROMS input files contain data spanning more than 1 day. Please convert input files to daily data.')
+else:
+    warn('Cannot determine if ROMS input files contain daily data. Please ensure they do.')
+
+# get list of variables that can be dropped from reading
+drop_vars = []
+for v in vars:
+    if v not in required_vars:
+        drop_vars.append(v)
+
+roms_files = None
+ds_roms = None
+
+# --------------------------------------------------------
+# 3. Determine config parameters
+# --------------------------------------------------------
+
+# use from config file if existing for model
+# otherwise run manual checks to determine values
+
+# --------------------------------------------------------
+# 4. Performance check
+# --------------------------------------------------------
+
+# report on DSWT detection performance
+# run manual performance checks if wanted
+
+# --------------------------------------------------------
+# 5. Detect DSWT & cross-shelf DSWT transport
+# --------------------------------------------------------
 for year in years:
     input_dir = f'{model_input_dir}{year}/'
-    output_dswt = f'{output_dir}dswt_{model}_{year}_{domain}.csv'
+    output_dswt = f'{output_dir}dswt_{year}.csv'
     
-    if not os.path.exists(output_dswt):
-        transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
-        
-        roms_files = select_input_files(input_dir, files_contain)
-        roms_files.sort()
-        
-        time = []
-        f_dswt = []
-        cross_dswt = []
-        vel_dswt = []
-        cross_bottom = []
-        cross_surface = []
-        cross_interior = []
-        for file in roms_files:
-            # Load ROMS data
-            ds_roms = load_roms_data(file, grid_file)
-            
-            if lon_range is not None and lat_range is not None: # does this make computation faster?
-                ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
-                
-            # --- Get daily mean percentage of DSWT occurrence and DSWT transport & velocity along transects ---
-            # !!! FIX !!! assuming here that each file contains daily data -> keep? but include check somewhere?
-            ocean_time0 = pd.to_datetime(ds_roms.ocean_time.values[0])
-            f_dswt_daily, transport_daily, vel_daily = calculate_mean_dswt_along_all_transects(ds_roms, transects, config)
-            
-            # --- Get daily mean cross-shelf transport for different depth layers ---
-            n_bottom = np.ceil(config.cross_shelf_bottom_layers_percentage*len(ds_roms.s_rho))
-            n_surface = np.ceil(config.cross_shelf_surface_layers_percentage*len(ds_roms.s_rho))
-            n_interior = len(ds_roms.s_rho)-n_bottom-n_surface
-            s_bottom = np.arange(0, n_bottom, 1)
-            s_surface = np.arange(len(ds_roms.s_rho)-n_surface, len(ds_roms.s_rho), 1)
-            s_interior = np.arange(n_bottom, len(ds_roms.s_rho)-n_surface)
-            
-            transport_bottom, vel_bottom = calculate_daily_mean_cross_shelf_transport_at_depth_contour(ds_roms, config.cross_shelf_transport_depth, s_bottom)
-            transport_surface, vel_surface = calculate_daily_mean_cross_shelf_transport_at_depth_contour(ds_roms, config.cross_shelf_transport_depth, s_surface)
-            transport_interior, vel_interior = calculate_daily_mean_cross_shelf_transport_at_depth_contour(ds_roms, config.cross_shelf_transport_depth, s_interior)
-            
-            # --- Save to csv file ---
-            data = np.array([datetime(ocean_time0.year, ocean_time0.month, ocean_time0.day),
-                             f_dswt_daily, transport_daily, vel_daily,
-                             transport_bottom, vel_bottom,
-                             transport_surface, vel_surface,
-                             transport_interior, vel_interior])
-            columns = ['time', 'f_dswt', 'dswt_transport', 'dswt_velocity',
-                       'bottom_transport', 'bottom_velocity',
-                       'surface_transport', 'surface_velocity',
-                       'interior_transport', 'interior_velocity']
-            df = pd.DataFrame(np.expand_dims(data, 0), columns=columns)
-            
-            if os.path.exists(output_dswt):
-                df.to_csv(output_dswt, mode='a', header=False, index=False)
-            else:
-                df.to_csv(output_dswt, index=False)
+    if os.path.exists(output_dswt):
+        log.info(f'Output already exists for {year}, skipping.')
+        continue
+    
+    transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
+    roms_files = select_input_files(input_dir, files_contain)
+    roms_files.sort()
 
-    else:
-        log.info(f'Output file already exists, using existing file: {output_dswt}')
+    for file in roms_files:
+        # Load ROMS data
+        ds_roms = load_roms_data(file, grid_file, drop_vars=drop_vars)
+        
+        if lon_range is not None and lat_range is not None: # does this make computation faster?
+            ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
+        
+        df_transects_dswt = determine_daily_dswt_along_multiple_transects(ds_roms, transects, config)
+        
+        if os.path.exists(output_dswt):
+            df_transects_dswt.to_csv(output_dswt, mode='a', header=False, index=False)
+        else:
+            df_transects_dswt.to_csv(output_dswt, index=False)
+
+# # to read csv and then get daily means:
+# df = pd.read_csv(output_dswt, index_col=['time', 'transect']) # (this is a MultiIndex DataFrame)
+# df.groupby('time').mean()
