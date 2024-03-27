@@ -62,6 +62,27 @@ def get_daily_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
 
     return np.array(daily_time), np.array(daily_values)
 
+def get_monthly_sums(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
+    monthly_time = []
+    monthly_values = []
+
+    start_date = datetime(time[0].year, time[0].month, 1)
+    end_date = datetime(time[-1].year, time[-1].month, 1)
+    n_months = 0
+    add_date = add_month_to_time(start_date, n_months)
+    while add_date != end_date:
+        n_months += 1
+        add_date = add_month_to_time(start_date, n_months)
+
+    for n in range(n_months+1):
+        start_date = add_month_to_time(time[0], n)
+        end_date = add_month_to_time(time[0], n+1)
+        l_time = get_l_time_range(time, start_date, end_date)
+        monthly_time.append(start_date+timedelta(seconds=(start_date-end_date).total_seconds()/2))
+        monthly_values.append(np.nansum(values[l_time], axis=time_axis))
+
+    return np.array(monthly_time), np.array(monthly_values)
+
 def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
     monthly_time = []
     monthly_values = []
