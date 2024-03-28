@@ -63,7 +63,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config):
     # condition 2: vertical density gradient > a minimum value (differs per ocean model)
     # AND the vertical density gradient must exceed this value for a minimum number of cells
     # the result is that DSWT is determined for the entire transect
-    n_z_layers = len(transect_ds.z_rho)
+    n_z_layers = len(transect_ds.s_rho)
     n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage))
     l_drhodz = np.any(transect_ds.vertical_density_gradient[:, 0:n_depth_layers, :] > config.minimum_drhodz, axis=1) # [time, distance] (check for any along depth)
     n_used_cells = sum(~np.isnan(transect_ds.h.values))
@@ -101,26 +101,8 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
         transect_ds = select_roms_transect(roms_ds, lon_land, lat_land, lon_ocean, lat_ocean)
         l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
         
-        dswt_cross_transport, dswt_cross_vel = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, transects[transect_name], l_dswt, config)
+        dswt_cross_transport, dswt_cross_vel = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
 
         df_transects_dswt.loc[i] = [time, transect_name, np.nanmean(l_dswt.astype(int)), np.nanmean(dswt_cross_vel), np.nansum(dswt_cross_transport)]
         
-    return df_transects_dswt  
-
-# def calculate_mean_dswt_along_all_transects(ds:xr.Dataset, transects:dict, config:Config) -> float:
-#     transects_dswt = determine_dswt_along_multiple_transects(ds, transects, config)
-#     transect_names = list(transects_dswt.keys())
-    
-#     l_dswt = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
-#     transport = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
-#     velocity = np.zeros((len(transects_dswt[transect_names[0]]['l_dswt']), len(transect_names)))
-#     for i, t in enumerate(transect_names):
-#         l_dswt[:, i] = transects_dswt[t]['l_dswt']
-#         transport[:, i] = transects_dswt[t]['transport']
-#         velocity[:, i] = transects_dswt[t]['velocity']
-    
-#     mean_dswt = np.nanmean(l_dswt)
-#     overall_transport = np.nansum(transport)
-#     mean_velocity = np.nanmean(velocity)
-    
-#     return mean_dswt, overall_transport, mean_velocity
+    return df_transects_dswt
