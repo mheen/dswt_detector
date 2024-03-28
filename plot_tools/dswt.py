@@ -51,8 +51,8 @@ def plot_transect(ax:plt.axes, transect_ds:xr.Dataset, variable:str, t_dswt:int,
     ax.set_ylim([-200, 0])
     ax.set_title('')
     ax.set_ylabel('Depth (m)')
-    ax.set_yticks([0, -100, -200])
-    ax.set_yticklabels([0, 100, 200])
+    ax.set_yticks([0, -50, -100, -150, -200])
+    ax.set_yticklabels([0, 50, 100, 150, 200])
     
     return ax, c
 
