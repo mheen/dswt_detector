@@ -1,6 +1,16 @@
+import os, sys
+parent = os.path.abspath('.')
+sys.path.insert(1, parent)
+
 from plot_tools.interactive_tools import plot_cycler
 from readers.read_ocean_data import select_roms_transect
 from tools.roms import get_eta_xi_along_transect
+from dswt.dswt_detection import determine_dswt_along_transect
+
+from tools.config import read_config, Config
+from readers.read_ocean_data import load_roms_data
+from tools.files import get_dir_from_json
+from transects import get_transects_in_lon_lat_range
 
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -9,45 +19,58 @@ import json
 import cartopy.crs as ccrs
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
-def select_transects_to_plot(transects_dswt:dict, transect_interval:int,
+def select_transects_to_plot(transects:dict, transect_interval:int,
                              lon_rho:np.ndarray, lat_rho:np.ndarray,
                              transect_ds=500.) -> list[dict]:
     
-    transect_names = list(transects_dswt.keys())
+    transect_names = list(transects.keys())
     
-    transects = []
+    transects_to_plot = []
     for i in np.arange(0, len(transect_names), transect_interval):
-        lon_land = transects_dswt[transect_names[i]]['lon_land']
-        lat_land = transects_dswt[transect_names[i]]['lat_land']
-        lon_ocean = transects_dswt[transect_names[i]]['lon_ocean']
-        lat_ocean = transects_dswt[transect_names[i]]['lat_ocean']
-        
-        l_dswt = transects_dswt[transect_names[i]]['l_dswt']
+        lon_land = transects[transect_names[i]]['lon_land']
+        lat_land = transects[transect_names[i]]['lat_land']
+        lon_ocean = transects[transect_names[i]]['lon_ocean']
+        lat_ocean = transects[transect_names[i]]['lat_ocean']
         
         eta, xi = get_eta_xi_along_transect(lon_rho, lat_rho,
                                             lon_land, lat_land,
                                             lon_ocean, lat_ocean,
                                             transect_ds)
        
-        transect = {'name': transect_names[i], 'lon':lon_rho[eta, xi],
-                    'lat': lat_rho[eta, xi], 'dswt': l_dswt,
+        transect = {'name': transect_names[i],
+                    'lon':lon_rho[eta, xi], 'lat': lat_rho[eta, xi],
                     'lon_land': lon_land, 'lat_land': lat_land,
                     'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
 
-        transects.append(transect)
+        transects_to_plot.append(transect)
         
-    return transects
-    
-def plot_transects(ax:plt.axes, transects:list[dict], t:int) -> tuple[plt.axes, plt.legend]:
+    return transects_to_plot
+
+def get_dswt_transect(df_dswt:pd.DataFrame, transect_name:str, time:datetime) -> bool:
+    # not ideal: returns True if there is ANY DSWT during a day
+    f_dswt = df_dswt.xs(time.strftime("%Y-%m-%d"), level='time', drop_level=False).xs(transect_name, level='transect', drop_level=False)['f_dswt']
+    if f_dswt.values[0] > 0.0:
+        return True
+    else:
+        return False
+
+def plot_transects(ax:plt.axes, transects:list[dict], df_dswt:pd.DataFrame, time:datetime) -> tuple[plt.axes, plt.legend]:
     for transect in transects:
-        if transect['dswt'][t] == True:
-            ax.plot(transect['lon'], transect['lat'], '-', color='#1b7931', label=transect['name'])
+        if df_dswt is not None:
+            l_dswt = get_dswt_transect(df_dswt, transect['name'], time)
         else:
-            ax.plot(transect['lon'], transect['lat'], '-', color='#989898', label=transect['name'])
+            l_dswt = None
+        if l_dswt == True:
+            ax.plot(transect['lon'], transect['lat'], '-', color='#1b7931', label=transect['name'])
+        elif l_dswt == False:
+            ax.plot(transect['lon'], transect['lat'], '-', color='k', label=transect['name'])
+        else:
+            ax.plot(transect['lon'], transect['lat'], '-', color='#989898')
     # legend
-    legend_elements = [Line2D([0], [0], color='#1b7931'), Line2D([0], [0], color='#989898')]
-    l = ax.legend(legend_elements, ['DSWT', 'no DSWT'], loc='upper left', bbox_to_anchor=(1.01, 1.0))
+    legend_elements = [Line2D([0], [0], color='#1b7931'), Line2D([0], [0], color='k'), Line2D([0], [0], color='#989898')]
+    l = ax.legend(legend_elements, ['DSWT', 'no DSWT', 'unknown'], loc='upper left', bbox_to_anchor=(1.01, 1.0))
     
     return ax, l
 
@@ -77,7 +100,9 @@ def get_vmin_vmax(vmin:float, vmax:float, variable:str, roms_ds:xr.Dataset) -> t
     return vmin, vmax
 
 def plot_dswt_maps_transects(roms_ds:xr.Dataset,
-                             transects_dswt:dict,
+                             transects:dict,
+                             df_dswt:pd.DataFrame,
+                             config:Config,
                              variable='density', vmin=None, vmax=None, cmap='RdYlBu_r',
                              t_interval=1, transect_interval=4,
                              lon_range=None, lat_range=None) -> plt.axes:
@@ -86,7 +111,7 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset,
         raise ValueError(f'''Unknown variable requested: {variable}
                          Valid variables are: {list(roms_ds.keys())}''')
     
-    transects = select_transects_to_plot(transects_dswt, transect_interval,
+    transects_to_plot = select_transects_to_plot(transects, transect_interval,
                                          roms_ds.lon_rho.values, roms_ds.lat_rho.values)
     
     time_strs = pd.to_datetime(roms_ds.ocean_time.values)
@@ -142,9 +167,9 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset,
         # Transects
         # --------------------------------------------------------
         # --- Transects in maps
-        ax1, leg1 = plot_transects(ax1, transects, t)
+        ax1, leg1 = plot_transects(ax1, transects_to_plot, df_dswt, time_strs[t])
         leg1.remove()
-        ax2, leg2 = plot_transects(ax2, transects, t)
+        ax2, leg2 = plot_transects(ax2, transects_to_plot, df_dswt, time_strs[t])
         
         # --- Interactive transects
         lines = ax1.get_lines()
@@ -156,18 +181,20 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset,
         
         def on_pick(event): # !!! FIX !!! possible to keep transect selected while cycling through time?
             line = event.artist
-            transect = next(item for item in transects if item['name']==line.get_label())
+            transect = next(item for item in transects_to_plot if item['name']==line.get_label())
             
             # --- Water column plot
             ax3.clear()
             transect_ds = select_roms_transect(roms_ds, transect['lon_land'], transect['lat_land'], transect['lon_ocean'], transect['lat_ocean'], 500.)
             transect_ds[variable][t, :, :].plot(x='distance', y='z_rho', vmin=vmin, vmax=vmax, cmap=cmap, add_colorbar=False, ax=ax3)
             
+            l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
+            
             ax3.set_xlabel('Distance (m)')
             ax3.set_ylabel('Depth (m)')
             ax3.set_xlim([0, np.nanmax(transect_ds.distance.values)])
             ax3.set_ylim([np.nanmin(transect_ds.z_rho.values), 0])
-            ax3.set_title(f'{transect["name"]} - DSWT: {transect["dswt"][t].astype(bool)}')
+            ax3.set_title(f'{transect["name"]} - DSWT: {l_dswt[t].astype(bool)}')
             
             # --- Vertical density gradient per cell along transect
             ax4.clear()
@@ -196,3 +223,18 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset,
 
     fig = plot_cycler(single_plot, time)
     plt.show()
+    
+if __name__ == '__main__':
+    input_path = f'{get_dir_from_json("cwa")}2017/cwa_20170514_03__his.nc'
+    grid_file = f'{get_dir_from_json("cwa")}grid.nc'
+    roms_ds = load_roms_data(input_path, grid_file)
+    
+    lon_range = [114., 116.]
+    lat_range = [-33.0, -31.0]
+    transects = get_transects_in_lon_lat_range('input/transects/cwa_transects.json', lon_range, lat_range)
+    
+    config = read_config('cwa')
+    
+    df_dswt = pd.read_csv('output/cwa_114-116E_33-31S/old_dswt_2017.csv', index_col=['time', 'transect']) # (this is a MultiIndex DataFrame)
+    
+    plot_dswt_maps_transects(roms_ds, transects, df_dswt, config)
