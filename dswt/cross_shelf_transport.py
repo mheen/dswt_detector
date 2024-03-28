@@ -96,7 +96,6 @@ def add_down_transect_velocity_to_ds(transect_ds:xr.Dataset) -> xr.Dataset:
 
 def calculate_dswt_cross_shelf_transport_along_transect(
     transect_ds:xr.Dataset,
-    transect:dict,
     l_dswt:np.array,
     config:Config) -> tuple[np.ndarray, np.ndarray]:
 
@@ -110,22 +109,24 @@ def calculate_dswt_cross_shelf_transport_along_transect(
     i_dswt = np.where(l_dswt == True)[0] # times where there is DSWT
     i_dists = np.where(np.logical_and(transect_ds.h.values >= config.dswt_cross_shelf_transport_depth_range[0],
                             transect_ds.h.values <= config.dswt_cross_shelf_transport_depth_range[1]))[0] # locations for depth range
-    n_z_layers = len(transect_ds.z_rho)
+    n_z_layers = len(transect_ds.s_rho)
     n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage)) # depth layers to consider for DSWT
     for i in i_dswt:
         # calculate transport over all depth layers below first spike in drho/dz
         transport_over_depth_range = []
+        mean_vel_over_depth_range = []
         for j in i_dists:
             i_depth = np.where(transect_ds.vertical_density_gradient[i, 0:n_depth_layers, j] >= config.minimum_drhodz)[0]
             if len(i_depth) == 0:
                 continue # drho/dz condition not satisfied at this location along shelf
             k = i_depth[-1]
-            transport_over_depth_range.append(np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values) # m2
+            transport_over_depth_range.append(np.nansum(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values) # m2
+            mean_vel_over_depth_range.append(np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j]))
         
         if len(transport_over_depth_range) == 0:
             continue # drho/dz condition not satisfied over entire depth range: transport = 0
         
         transport[i] = np.nanmean(transport_over_depth_range) # m2 (per transect)
-        mean_vel[i] = np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j]) # m/s
+        mean_vel[i] = np.nanmean(mean_vel_over_depth_range) # m/s
     
     return transport, mean_vel
