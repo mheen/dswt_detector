@@ -6,7 +6,7 @@
 
 !input/plot_settings.json
 !input/transects/*_transects.json
-!performance_tests/cwa_2017_performance_comparison.csv
+!performance_tests/output/*_performance_comparison.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

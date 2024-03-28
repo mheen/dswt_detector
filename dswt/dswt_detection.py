@@ -84,7 +84,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config):
     # DSWT along a transect when both condition 1 and condition 2 hold
     l_dswt = np.logical_and(condition1, condition2)
     
-    return l_dswt, drhodx, condition2, drhodz_max, drhodz_cells
+    return l_dswt, condition1, condition2, drhodz_max, drhodz_cells
 
 def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, config:Config) -> pd.DataFrame:
     
