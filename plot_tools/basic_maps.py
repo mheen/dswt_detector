@@ -101,7 +101,7 @@ def add_grid(ax:plt.axes, meridians:list, parallels:list,
 def plot_basic_map(ax:plt.axes, lon_range=None, lat_range=None,
                    meridians=None, parallels=None,
                    xmarkers='bottom', ymarkers='left',
-                   draw_grid=False, zorder_c=5) -> plt.axes:
+                   draw_grid=False, full_resolution=False) -> plt.axes:
     
     if lon_range is None:
         lon_range = lon_range_default
@@ -112,8 +112,12 @@ def plot_basic_map(ax:plt.axes, lon_range=None, lat_range=None,
     if parallels is None:
         parallels = np.arange(-46.0, -24.0, 4.0)
         
-    ax.add_feature(cfeature.LAND, edgecolor='k', facecolor='#d2d2d2')
-    ax.add_feature(cfeature.COASTLINE)
+    if full_resolution == True:
+        coast = cfeature.GSHHSFeature(scale="full")
+        ax.add_feature(coast, linewidth=1, edgecolor='k', facecolor='#d2d2d2', zorder=2)
+    else:
+        ax.add_feature(cfeature.LAND, edgecolor='k', facecolor='#d2d2d2')
+        ax.add_feature(cfeature.COASTLINE)
     
     ax = add_grid(ax, meridians, parallels, xmarkers, ymarkers, draw_grid)
 
