@@ -235,6 +235,6 @@ if __name__ == '__main__':
     
     config = read_config('cwa')
     
-    df_dswt = pd.read_csv('output/cwa_114-116E_33-31S/old_dswt_2017.csv', index_col=['time', 'transect']) # (this is a MultiIndex DataFrame)
+    df_dswt = pd.read_csv('output/cwa_114-116E_33-31S/dswt_2017.csv', index_col=['time', 'transect']) # (this is a MultiIndex DataFrame)
     
     plot_dswt_maps_transects(roms_ds, transects, df_dswt, config)
