@@ -1,4 +1,4 @@
-from readers.read_ocean_data import select_roms_transect
+from readers.read_ocean_data import select_roms_transect, select_roms_subset
 from tools.roms import get_eta_xi_along_transect, find_eta_xi_covering_lon_lat_box
 from tools.coordinates import get_bearing_between_points, get_distance_between_points
 from tools import log
@@ -13,8 +13,11 @@ from warnings import warn
 import json
 
 import matplotlib.pyplot as plt
-from plot_tools.basic_maps import plot_basic_map, plot_contours
+from matplotlib.colors import ListedColormap
+from plot_tools.basic_maps import plot_basic_map, plot_contours, add_grid
+from plot_tools.general import add_subtitle
 import cartopy.crs as ccrs
+import os
 
 def convert_land_mask_to_polygons(lon:np.ndarray[float], lat:np.ndarray[float], mask:np.ndarray[int]) -> list[shapely.Polygon]:
     land_mask = np.abs(mask-1).astype(np.int32) # assuming ocean points are 1 in mask!
@@ -245,13 +248,194 @@ def get_specific_transect_data(roms_ds:xr.Dataset, transects:dict, transect_name
     transect_ds = select_roms_transect(roms_ds, transect['lon_land'], transect['lat_land'],
                                        transect['lon_ocean'], transect['lat_ocean'])
     return transect_ds
-    
-# add plotting function to check transects?
 
-# add function that determines how many grid cells are not covered by transects?
+def plot_example_transect_method(lon:np.ndarray,
+                                 lat:np.ndarray,
+                                 mask:np.ndarray,
+                                 h:np.ndarray,
+                                 transects:dict,
+                                 example_transect:str,
+                                 shelf_depth=200,
+                                 ax=None,
+                                 output_path=None,
+                                 show=True):
+    
+    if ax is None:
+        ax = plt.axes(projection=ccrs.PlateCarree())
+    
+    land_poly = get_land_polygon(lon, lat, mask)
+    x, y = land_poly.exterior.xy
+    
+    ax.fill(x, y, edgecolor='k', facecolor='#d2d2d2')
+    ax = add_grid(ax, meridians, parallels, 'bottom', 'left', False)
+    ax.set_extent([lon_range[0], lon_range[1], lat_range[0], lat_range[1]], ccrs.PlateCarree())
+    ax = plot_contours(lon, lat, h, clevels=[shelf_depth], lon_range=lon_range, lat_range=lat_range, ax=ax1)
+    
+    lon_p = transects[example_transect]['lon_ocean']
+    lat_p = transects[example_transect]['lat_ocean']
+    ax.scatter(lon_p, lat_p, s=5, c='#C70039', marker='o')
+    
+    transect_names = list(transects.keys())
+    i = transect_names.index(example_transect)
+    names = [transect_names[i-1], transect_names[i], transect_names[i+1]]
+    lons = [transects[n]['lon_ocean'] for n in names]
+    lats = [transects[n]['lat_ocean'] for n in names]
+    perp_angle = calculate_perpendicular_angles_to_shelf_points(lons, lats)
+    dist = 100.
+    line = shapely.LineString([(lon_p, lat_p), (lon_p + dist * np.sin(perp_angle[1]), lat_p + dist * np.cos(perp_angle[1]))])
+    ax.plot(*line.xy, '--k')
+    
+    ax.scatter(transects[example_transect]['lon_land'], transects[example_transect]['lat_land'], s=10, c='#C70039', marker='x')
+    
+    eta, xi = get_eta_xi_along_transect(lon, lat,
+                                        transects[example_transect]['lon_land'],
+                                        transects[example_transect]['lat_land'],
+                                        transects[example_transect]['lon_ocean'],
+                                        transects[example_transect]['lat_ocean'],
+                                        500)
+        
+    ax.plot(lon[eta, xi], lat[eta, xi], '-', color='#25419e', linewidth=1.0)
+    
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show is True:
+        plt.show()
+    else:
+        return ax
+    
+def plot_transects(transects:dict,
+                   roms_lon:np.ndarray,
+                   roms_lat:np.ndarray,
+                   roms_h:np.ndarray,
+                   lon_range:list, lat_range:list,
+                   meridians:list, parallels:list,
+                   transect_interval:10,
+                   ds=500.,
+                   color='#989898',
+                   linewidth=0.7,
+                   ax=None,
+                   output_path=None,
+                   show=True) -> plt.axes:
+    
+    if ax is None:
+        ax = plt.axes(projection=ccrs.PlateCarree())
+    ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
+    ax = plot_contours(roms_lon, roms_lat, roms_h, clevels=[200],
+                        lon_range=lon_range, lat_range=lat_range, ax=ax, clabel=False)
+    
+    transect_names = list(transects.keys())
+    
+    for i in np.arange(0, len(transect_names), transect_interval):
+        eta, xi = get_eta_xi_along_transect(roms_lon, roms_lat,
+                                            transects[transect_names[i]]['lon_land'],
+                                            transects[transect_names[i]]['lat_land'],
+                                            transects[transect_names[i]]['lon_ocean'],
+                                            transects[transect_names[i]]['lat_ocean'],
+                                            ds)
+        
+        ax.plot(roms_lon[eta, xi], roms_lat[eta, xi], '-', color=color, linewidth=linewidth)
+        ax.text(roms_lon[eta, xi][-1], roms_lat[eta, xi][-1], transect_names[i], ha='right', va='center', fontsize=8)
+        
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show is True:
+        plt.show()
+    else:
+        return ax
+
+def plot_transect_grid_coverage(transects:dict,
+                                roms_lon:np.ndarray,
+                                roms_lat:np.ndarray,
+                                roms_h:np.ndarray,
+                                lon_range:list, lat_range:list,
+                                meridians:list, parallels:list,
+                                ds=500.,
+                                ax=None,
+                                output_path=None,
+                                show=True,
+                                colorbar=True,
+                                vmin=0,
+                                vmax=5,
+                                cmap='cividis') -> plt.axes:
+    transect_names = list(transects.keys())
+    
+    grid_coverage = np.zeros(roms_lon.shape)
+    for i in range(len(transect_names)):
+        eta, xi = get_eta_xi_along_transect(roms_lon, roms_lat,
+                                            transects[transect_names[i]]['lon_land'],
+                                            transects[transect_names[i]]['lat_land'],
+                                            transects[transect_names[i]]['lon_ocean'],
+                                            transects[transect_names[i]]['lat_ocean'],
+                                            ds)
+        grid_coverage[eta, xi] += 1
+    
+    grid_coverage[grid_coverage==0] = np.nan
+        
+    if ax is None:
+        ax = plt.axes(projection=ccrs.PlateCarree())
+    ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
+    ax = plot_contours(roms_lon, roms_lat, roms_h, clevels=[200],
+                        lon_range=lon_range, lat_range=lat_range, ax=ax)
+        
+    c = ax.pcolormesh(roms_lon, roms_lat, grid_coverage, vmin=vmin, vmax=vmax, cmap=cmap)
+    if colorbar is True:
+        cbar = plt.colorbar(c)
+        cbar.set_label('Grid cell in transects (#)')
+    
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show is True:
+        plt.show()
+    else:
+        return ax, c
 
 if __name__ == '__main__':
     model_input_dir = get_dir_from_json('cwa')
     grid_file = f'{model_input_dir}grid.nc'
     grid_ds = xr.open_dataset(grid_file)
-    generate_transects_json_file(grid_ds, 'input/transects/cwa_transects.json')
+    
+    
+    output_path = 'plots/si/cwa_transects.jpg'
+    
+    lon_range = [114.5, 116.0]
+    lat_range = [-33.0, -31.0]
+    meridians = [114.5, 115.5]
+    parallels = [-33.0, -32.0, -31.0]
+    
+    transect_interval = 5
+    example_transect = 't240'
+    
+    transects_file = 'input/transects/cwa_transects.json'
+    if not os.path.exists(transects_file):
+        generate_transects_json_file(grid_ds, transects_file)
+    
+    transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
+    lon = grid_ds.lon_rho.values
+    lat = grid_ds.lat_rho.values
+    h = grid_ds.h.values
+    
+    fig = plt.figure(figsize=(10, 6))
+    ax1 = plt.subplot(1, 3, 1, projection=ccrs.PlateCarree())
+    ax1 = plot_example_transect_method(lon, lat, grid_ds.mask_rho.values, h, transects, example_transect, ax=ax1, show=False)
+    ax1 = add_subtitle(ax1, '(a) Example transect')
+    
+    ax2 = plt.subplot(1, 3, 2, projection=ccrs.PlateCarree())
+    ax2 = plot_transects(transects, grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                         lon_range, lat_range, meridians, parallels, transect_interval, color='#25419e', linewidth=1.0,
+                         ax=ax2, show=False)
+    ax2.set_yticklabels([])
+    ax2 = add_subtitle(ax2, f'(b) Transects (every {transect_interval})')
+    
+    ax3 = plt.subplot(1, 3, 3, projection=ccrs.PlateCarree())
+    ax3, c = plot_transect_grid_coverage(transects, grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                                      lon_range, lat_range, meridians, parallels,
+                                      ax=ax3, show=False, colorbar=False)
+    l3, b3, w3, h3 = ax3.get_position().bounds
+    cbax = fig.add_axes([l3+w3+0.02, b3, 0.02, h3])
+    cbar = plt.colorbar(c, cax=cbax)
+    cbar.set_label('Grid cell in transects (#)')
+    ax3.set_yticklabels([])
+    ax3 = add_subtitle(ax3, '(c) Grid cell coverage')
+    
+    plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    plt.close()
