@@ -1,3 +1,7 @@
+import os, sys
+parent = os.path.abspath('.')
+sys.path.insert(1, parent)
+
 import xarray as xr
 import numpy as np
 from datetime import datetime
@@ -10,11 +14,12 @@ from tools.seawater_density import calculate_density
 
 g = 9.81 # m/s2
 
-def select_input_files(input_dir:str, file_contains=None,
+def select_input_files(input_dir:str, file_preface=None,
+                       date_range=None, dateformat='%Y%m%d',
                        remove_gridfile=True, filetype='nc') -> list[str]:
-    all_files = get_files_in_dir(input_dir, filetype)
-    if file_contains is not None:
-        files = [f for f in all_files if file_contains in f]
+    all_files = get_files_in_dir(input_dir, filetype, return_full_path=False)
+    if file_preface is not None:
+        files = [f for f in all_files if f.startswith(file_preface)]
     else:
         files = all_files
         
@@ -22,7 +27,12 @@ def select_input_files(input_dir:str, file_contains=None,
         grid_files = [f for f in files if 'grid' in f]
         for f in grid_files:
             files.remove(f)
-        
+            
+    if date_range is not None:
+        len_date = len(datetime(2100, 1, 1).strftime(dateformat))
+        files = [f for f in files if date_range[0]<=datetime.strptime(f[:len(file_preface)+len_date], f'{file_preface}{dateformat}')<=date_range[1]]
+    
+    files = [f'{input_dir}{f}' for f in files]    
     return files
 
 def read_roms_data(input_paths:str, grid_file:str, drop_vars:list) -> xr.Dataset:
@@ -154,6 +164,3 @@ def select_roms_transect(roms_ds:xr.Dataset,
     transect_ds.coords['distance'] = distance
     
     return transect_ds
-
-if __name__ == '__main__':
-    roms_ds = load_roms_data('tests/data/', 'tests/data/cwa_grid.nc', 'cwa_test_dswt')
