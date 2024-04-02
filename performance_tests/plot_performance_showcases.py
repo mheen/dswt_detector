@@ -49,13 +49,14 @@ cmap_drhodz = 'bone_r'
 wind_color = '#f1f5f9'
 land_color = '#d2d2d2'
 
-def dswt_detection(date:datetime, transect_to_plot:int, time_to_plot:int):  
+def plot_dswt_detection(date:datetime, transect_to_plot:int, time_to_plot:int, config:Config,
+                        output_path=None):  
     # -- Load ROMS data
     input_path = f'{input_dir}cwa_{date.strftime("%Y%m%d")}_03__his.nc'
     roms_ds = load_roms_data(input_path, grid_file=grid_file)
     
     transect_ds = get_specific_transect_data(roms_ds, transects, transect_to_plot)
-    l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds)
+    l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
     
     # --- Load ERA5 wind data
     era5_ds = load_era5_data(get_dir_from_json("era5"), '2017')
@@ -115,7 +116,7 @@ def dswt_detection(date:datetime, transect_to_plot:int, time_to_plot:int):
     ax1 = fig.axes[0]
     l1, b1, w1, h1 = ax1.get_position().bounds
     ax7 = fig.add_axes([l1+0.07, b1+0.5*h1, w1/5, h1/5])
-    ax7.text(0, 0, f'{np.round(wind_vel, 0)} m/s', rotation=270-wind_dir, bbox=dict(boxstyle='rarrow', fc=wind_color, ec='k'), fontsize=8)
+    ax7.text(0, 0, f'{np.round(wind_vel[i_wind], 0)} m/s', rotation=270-wind_dir[i_wind], bbox=dict(boxstyle='rarrow', fc=wind_color, ec='k'), fontsize=8)
     ax7.set_axis_off()
     
     # title
@@ -127,21 +128,22 @@ def dswt_detection(date:datetime, transect_to_plot:int, time_to_plot:int):
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
 
-def dswt_cross_shelf_transport(transect_ds:xr.Dataset,
+def plot_dswt_cross_shelf_transport(transect_ds:xr.Dataset,
                                i_time:int,
                                i_dists:list[int],
                                i_depths:list[int],
-                               config:Config,
                                transport:float,
                                velocity:float,
+                               title='',
                                output_path=None,
                                show=True):
     
-    x = [transect_ds.distance.values[i_dists[0]], transect_ds.distance.values[i_dists[-1]]]
-    y = [transect_ds.z_rho.values[i_depths[-1], i_dists[0]], transect_ds.z_rho.values[0, i_dists[-1]]]
-
-    def plot_box_for_cross_transport(ax:plt.axes, x:list, y:list) -> plt.axes:
-        ax.plot([x[0], x[1], x[1], x[0], x[0]], [y[0], y[0], y[1], y[1], y[0]], '-', color='#C70039', linewidth=0.5)
+    transport_mask = np.ones(transect_ds.z_rho.shape)
+    for i in range(len(i_dists)):
+        transport_mask[0:i_depths[i], i_dists[i]] = np.nan # NaN where using cells for cross transport
+    
+    def plot_cross_transport_mask(ax:plt.axes, transport_mask:np.ndarray) -> plt.axes:
+        ax.pcolormesh(transect_ds.distance.values, transect_ds.z_rho.values, transport_mask, alpha=0.5, cmap='Greys')
         return ax
 
     fig = plt.figure(figsize=(8, 12))
@@ -150,19 +152,15 @@ def dswt_cross_shelf_transport(transect_ds:xr.Dataset,
     cbar1 = plt.colorbar(c1)
     cbar1.set_label('Density (kg/m$^3$)')
     ax1 = plot_vertical_lines_in_transect(ax1, transect_ds, 'vertical_density_gradient', i_time, 0.03)
-    ax1 = add_alpha_to_transect_parts_not_used_dswt_detection(ax1, transect_ds, config)
-    ax1.plot([transect_ds.distance[0], transect_ds.distance[-1]], [config.dswt_cross_shelf_transport_depth_range[0], config.dswt_cross_shelf_transport_depth_range[0]], '--k')
-    ax1.plot([transect_ds.distance[0], transect_ds.distance[-1]], [config.dswt_cross_shelf_transport_depth_range[0], config.dswt_cross_shelf_transport_depth_range[0]], '--k')
-    ax1 = plot_box_for_cross_transport(ax1, x, y)
+    ax1 = plot_cross_transport_mask(ax1, transport_mask)
     ax1 = add_subtitle(ax1, '(a) Density along transect', location='lower left')
 
     ax2 = plt.subplot(3, 1, 2)
     ax2, c2 = plot_transect(ax2, transect_ds, 'vertical_density_gradient', i_time, 0, 0.03, 'bone_r')
     cbar2 = plt.colorbar(c2)
     cbar2.set_label('Vertical density gradient')
-    ax2 = plot_vertical_lines_in_transect(ax2, transect_ds, 'vertical_density_gradient', i_time, 0.03, color='w')
-    ax2 = add_alpha_to_transect_parts_not_used_dswt_detection(ax2, transect_ds, config)
-    ax2 = plot_box_for_cross_transport(ax2, x, y)
+    ax2 = plot_vertical_lines_in_transect(ax2, transect_ds, 'vertical_density_gradient', i_time, 0.03, color='#808080')
+    ax2 = plot_cross_transport_mask(ax2, transport_mask)
     ax2 = add_subtitle(ax2, '(b) Vertical density gradient along transect', location='lower left')
 
     ax3 = plt.subplot(3, 1, 3)
@@ -170,11 +168,12 @@ def dswt_cross_shelf_transport(transect_ds:xr.Dataset,
     cbar3 = plt.colorbar(c3)
     cbar3.set_label('Down-transect velocity')
     ax3 = plot_vertical_lines_in_transect(ax3, transect_ds, 'vertical_density_gradient', i_time, 0.03)
-    ax3 = add_alpha_to_transect_parts_not_used_dswt_detection(ax3, transect_ds, config)
-    ax3 = plot_box_for_cross_transport(ax3, x, y)
-    cross_text = f'Mean velocity {np.round(velocity, 2)} m/s, total transport: {np.round(transport, 0).astype(int)} m$^3$'
+    ax3 = plot_cross_transport_mask(ax3, transport_mask)
+    cross_text = f'Mean velocity {np.round(velocity, 2)} m/s, total transport: {np.round(transport, 0).astype(int)} m$^2$'
     ax3 = add_subtitle(ax3, f'(c) Cross-shelf velocity along transect\n    {cross_text}',
                        location='lower left')
+
+    ax1.set_title(title)
 
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -185,10 +184,10 @@ def dswt_cross_shelf_transport(transect_ds:xr.Dataset,
         plt.close()
 
 if __name__ == '__main__':
-    plot_dswt_detection = False
-    plot_cross_transport = True
+    make_dswt_detection_plots = False
+    make_cross_transport_plots = True
     
-    if plot_dswt_detection == True:
+    if make_dswt_detection_plots == True:
         # ------------------------------------------------------
         # DSWT detection examples
         # ------------------------------------------------------
@@ -196,21 +195,25 @@ if __name__ == '__main__':
                 datetime(2017, 2, 22), # no DSWT: negative drhodx because of higher salinity along coast, but vertically mixed water column
                 datetime(2017, 6, 11), # DSWT
                 datetime(2017, 9, 8), # manual DSWT, algorithm no DSWT (because not enough consecutive cells)
-                datetime(2017, 5, 21)] # manual no DSWT, algorithm DSWT
-        transects_to_plot = ['t201', 't197', 't171', 't209', 't188']
-        time_to_plot = [0, 0, 6, 0, 5]
+                datetime(2017, 5, 21),  # manual no DSWT, algorithm DSWT
+                datetime(2017, 8, 19),
+                datetime(2017, 8, 18)]
+        transects_to_plot = ['t201', 't197', 't171', 't209', 't188', 't268', 't200']
+        time_to_plot = [0, 0, 6, 0, 5, 0, 3]
+
+        config = read_config('cwa')
 
         for i in range(len(dates)):
             output_path = f'{output_dir}cwa_dswt-detection_{dates[i].strftime("%Y%m%d")}_{transects_to_plot[i]}.jpg'
-            dswt_detection(dates[i], transects_to_plot[i], time_to_plot[i], output_path)
+            plot_dswt_detection(dates[i], transects_to_plot[i], time_to_plot[i], config, output_path=output_path)
 
-    if plot_cross_transport == True:
+    if make_cross_transport_plots == True:
         # ------------------------------------------------------
         # Cross-shelf transport examples
         # ------------------------------------------------------
-        dates = [datetime(2017, 5, 14)]
-        transects_to_plot = ['t135']
-        time_to_plot = [3]
+        dates = [datetime(2017, 5, 14), datetime(2017, 8, 19), datetime(2017, 8, 18)]
+        transects_to_plot = ['t135', 't268', 't200']
+        time_to_plot = [3, 5, 6]
         
         config = read_config('cwa')
         
@@ -220,18 +223,22 @@ if __name__ == '__main__':
             input_path = f'{input_dir}cwa_{dates[i].strftime("%Y%m%d")}_03__his.nc'
             roms_ds = load_roms_data(input_path, grid_file=grid_file)
             
-            transect = next(transects[item] for item in transects if item==transects_to_plot[i])
-            
             transect_ds = get_specific_transect_data(roms_ds, transects, transects_to_plot[i])
             transect_ds = add_down_transect_velocity_to_ds(transect_ds)
             l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
-            cross_transport, cross_vel = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, transect, l_dswt, config)
+            cross_transport, cross_vel = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
             
             i_dists = np.where(np.logical_and(transect_ds.h.values >= config.dswt_cross_shelf_transport_depth_range[0],
                                 transect_ds.h.values <= config.dswt_cross_shelf_transport_depth_range[1]))[0] # locations for depth range
             n_z_layers = len(transect_ds.z_rho)
             n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage)) # depth layers to consider for DSWT
-            i_depths = np.where(transect_ds.vertical_density_gradient[i, 0:n_depth_layers, i_dists[0]] >= config.minimum_drhodz)[0]
-            dswt_cross_shelf_transport(transect_ds, time_to_plot[i], i_dists, i_depths, config,
+            i_depths = []
+            for j in range(len(i_dists)):
+                i_depths.append(np.where(transect_ds.vertical_density_gradient[time_to_plot[i], 0:n_depth_layers, i_dists[j]] >= config.minimum_drhodz)[0][-1])
+            
+            time_str = f'{pd.to_datetime(transect_ds.ocean_time.values[time_to_plot[i]]).strftime("%d-%m-%Y %H:%M")}'
+            title = f'DSWT cross-shelf transport: {transects_to_plot[i]}, {time_str}'
+            
+            plot_dswt_cross_shelf_transport(transect_ds, time_to_plot[i], i_dists, i_depths,
                                        cross_transport[time_to_plot[i]], cross_vel[time_to_plot[i]],
-                                       output_path=output_path, show=False)
+                                       title=title, output_path=output_path, show=False)
