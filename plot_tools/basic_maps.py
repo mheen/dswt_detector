@@ -15,7 +15,8 @@ lat_range_default = [-46.0, -24.0]
 def plot_contours(lon:np.ndarray, lat:np.ndarray, h:np.ndarray,
                   lon_range=None, lat_range=None, ax=None, show=False,
                   fontsize=10, color='k', linewidths=1,
-                  clevels=[50, 100, 200, 400, 800, 1000]) -> plt.axes:
+                  clevels=[50, 100, 200, 400, 800, 1000],
+                  clabel=True) -> plt.axes:
 
     if lon_range is None:
         lon_range = lon_range_default
@@ -40,7 +41,8 @@ def plot_contours(lon:np.ndarray, lat:np.ndarray, h:np.ndarray,
 
     cs = ax.contour(xm, ym, zm, levels=clevels,
                     colors=color, linewidths=linewidths, transform=ccrs.PlateCarree())
-    ax.clabel(cs, cs.levels, fontsize=fontsize, inline=True, fmt=_fmt)
+    if clabel is True:
+        ax.clabel(cs, cs.levels, fontsize=fontsize, inline=True, fmt=_fmt)
 
     if show is True:
         plt.show()
