@@ -17,10 +17,10 @@ recheck_differences = False
 
 year = 2017
 model = 'cwa'
-grid_file = f'{get_dir_from_json("cwa-roms")}grid.nc'
+grid_file = f'{get_dir_from_json("cwa")}grid.nc'
 
 # --- Calculate total number of transects for model year
-input_dir = f'{get_dir_from_json("cwa-roms")}{year}/'
+input_dir = f'{get_dir_from_json("cwa")}{year}/'
 files_contain = f'{model}_'
 input_files = select_input_files(input_dir, file_contains=files_contain)
 
@@ -34,7 +34,7 @@ n_transects = len(transects)
 n_times = len(xr.load_dataset(input_files[0]).ocean_time.values)
 total_transects = n_files*n_transects*n_times
 
-performance_file = f'performance_tests/{model}_{year}_performance_comparison.csv'
+performance_file = f'performance_tests/output/{model}_{year}_performance_comparison.csv'
 
 # --- Check performance
 def check_performance(performance_file:str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -63,7 +63,7 @@ df, df_diff = check_performance(performance_file)
 
 # --- Write differences to file
 def write_differences_to_file(df_diff):
-    diff_file = f'performance_tests/{model}_{year}_performance_differences.csv'
+    diff_file = f'performance_tests/output/{model}_{year}_performance_differences.csv'
     
     df_diff.to_csv(diff_file, index=False)
     log.info(f'Wrote differences between manual and algorithm to csv file: {diff_file}')
