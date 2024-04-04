@@ -51,7 +51,7 @@ def get_daily_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
     daily_time = []
     daily_values = []
 
-    n_days = (time[-1]-time[0]).days
+    n_days = (time[-1]-time[0]).days+1
 
     for n in range(n_days):
         start_date = datetime(time[0].year, time[0].month, time[0].day, 0, 0)+timedelta(days=n)
@@ -116,6 +116,21 @@ def get_yearly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
         l_time = get_l_time_range(time, start_date, end_date)
         yearly_time.append(datetime(start_date.year, 7, 2)) # middle of the year
         yearly_values.append(np.nanmean(values[l_time], axis=time_axis))
+        
+    return np.array(yearly_time), np.array(yearly_values)
+
+def get_yearly_sums(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
+    yearly_time = []
+    yearly_values = []
+    
+    n_years = time[-1].year - time[0].year + 1
+    
+    for n in range(n_years):
+        start_date = datetime(time[0].year+n, 1, 1)
+        end_date = datetime(start_date.year, 12, 31)
+        l_time = get_l_time_range(time, start_date, end_date)
+        yearly_time.append(datetime(start_date.year, 7, 2)) # middle of the year
+        yearly_values.append(np.nansum(values[l_time], axis=time_axis))
         
     return np.array(yearly_time), np.array(yearly_values)
 

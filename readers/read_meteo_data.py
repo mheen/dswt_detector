@@ -1,3 +1,6 @@
+import os, sys
+parent = os.path.abspath('.')
+sys.path.insert(1, parent)
 
 from tools.files import get_files_in_dir, get_dir_from_json
 from tools.wind import convert_u_v_to_meteo_vel_dir, get_lon_lat_range_indices
@@ -84,7 +87,7 @@ def get_daily_mean_wind_data_over_area(era5_ds:xr.Dataset) -> tuple:
 def write_daily_means_to_csv(input_dir:str, year:float,
                              lon_range:list, lat_range:list,
                              output_path:str):
-    ds = load_era5_data(input_dir, str(year))
+    ds = load_era5_data(input_dir, datetime(year, 1, 1).strftime("%Y%m%d"))
     ds_ss = select_era5_subset(ds, None, lon_range, lat_range)
     
     time, u, v, vel, dir = get_daily_mean_wind_data_over_area(ds_ss)
@@ -118,7 +121,7 @@ def read_wind_from_csvs(input_paths:list[str]) -> tuple[np.ndarray[datetime], np
     
 if __name__ == '__main__':
     input_dir = get_dir_from_json('era5')
-    years = np.arange(2000, 2023)
+    years = np.arange(2001, 2023)
     
     lon_range = [114.0, 116.0]
     lat_range = [-33.0, -31.0]
@@ -131,5 +134,5 @@ if __name__ == '__main__':
     domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
     
     for year in years:
-        output_path = f'output/wind/wind_cwa_{year}_{domain}.csv'
+        output_path = f'output/cwa_{domain}/wind/wind_{year}.csv'
         write_daily_means_to_csv(input_dir, year, lon_range, lat_range, output_path)
