@@ -1,403 +1,284 @@
+from tools.dswt_output import get_domain_str, read_dswt_output, get_monthly_dswt_values, get_yearly_dswt_values
+from tools.dswt_output import get_sflux_data, get_wind_data, get_monthly_atmosphere_data, get_yearly_atmosphere_data
+from tools.dswt_output import get_monthly_yearly_mei_data
+from transects import get_transects_in_lon_lat_range
+
+from plot_tools.basic_timeseries import plot_multi_bar_yearly_histogram
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_monthly_histogram
-from readers.read_climate_indices import read_dmi_data, read_mei_data, read_yearly_fremantle_msl, read_monthly_fremantle_msl
-from readers.surface_fluxes import read_surface_fluxes_from_csvs
-from readers.read_meteo_data import read_wind_from_csvs
-from tools.timeseries import get_yearly_means, get_monthly_means, add_month_to_time, get_l_time_range
-from tools import log
-from tools.files import get_dir_from_json
-import pandas as pd
+from plot_tools.basic_timeseries import plot_yearly_grid, plot_monthly_grid
+from plot_tools.general import color_y_axis, add_subtitle, add_wind_dir_ticks
+from tools.timeseries import add_month_to_time, get_l_time_range
+
+import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------
 # USER INPUT
 # ---------------------------------------------------------
-
 plot_interannual_variation = False
-plot_specific_year = True
-
-means = 'monthly'
-specific_years = np.arange(2000, 2023)
+plot_specific_years = True
 
 years = np.arange(2000, 2023)
+
 model = 'cwa'
 lon_range = [114.0, 116.0]
 lat_range = [-33.0, -31.0]
-input_dir = 'output/'
 
-plot_dir = get_dir_from_json('plots')
-output_path_interannual = f'{plot_dir}dswt_climate_indices_{means}.jpg'
-output_str_specific_years = f'{plot_dir}dswt_'
-show = False
-
-ocean_blue = '#25419e'
+color_dswt = '#25419e'
+color_transport = '#0e6e22'
 color_pos = '#900C3F'
 color_neg = '#1e1677'
 
 # ---------------------------------------------------------
 # Load data
 # ---------------------------------------------------------
-# domain string
-lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
-lon_range_unit = 'E' if lon_range[0] > 0 else 'W'
-lat_range_str = f'{int(abs(np.floor(lat_range[0])))}-{int(abs(np.ceil(lat_range[1])))}'
-lat_range_unit = 'S' if lat_range[0] < 0 else 'S'
-domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
 
-# --- load DSWT data ---
+domain = get_domain_str(lon_range, lat_range)
+main_input_dir = f'output/{model}_{domain}/'
 
-def get_means(time, values, means:str):
-    if means == 'yearly':
-        values_mean = np.repeat(np.nanmean(values), len(time))
-        return values_mean
+transects = get_transects_in_lon_lat_range(f'input/transects/{model}_transects.json', lon_range, lat_range)
+total_transect_width = np.sum(transects[t]['width'] for t in list(transects.keys()))
+
+# --- DSWT data ---
+time, f_dswt, vel_dswt, transport_dswt = read_dswt_output(main_input_dir, years, transects)
+time_m, f_dswt_m, vel_dswt_m, transport_dswt_m = get_monthly_dswt_values(time, f_dswt, vel_dswt, transport_dswt)
+time_y, f_dswt_y, vel_dswt_y, transport_dswt_y = get_yearly_dswt_values(time, f_dswt, vel_dswt, transport_dswt)
+
+# transport as m3/m
+transport_dswt = transport_dswt/total_transect_width
+transport_dswt_m = transport_dswt_m/total_transect_width
+transport_dswt_y = transport_dswt_y/total_transect_width
+
+# --- Climate index data ---
+_, mei_m, _, mei_y = get_monthly_yearly_mei_data(years)
+
+# --- Atmosphere data ---
+_, shflux, ssflux = get_sflux_data(f'{main_input_dir}sflux/', years)
+_, shflux_m, ssflux_m = get_monthly_atmosphere_data(time, shflux, ssflux)
+_, shflux_y, ssflux_y = get_yearly_atmosphere_data(time, shflux, ssflux)
+
+_, _, _, wind_vel, wind_dir = get_wind_data(f'{main_input_dir}wind/', years)
+_, wind_vel_m, wind_dir_m = get_monthly_atmosphere_data(time, wind_vel, wind_dir)
+_, wind_vel_y, wind_dir_y = get_yearly_atmosphere_data(time, wind_vel, wind_dir)
+
+# ---------------------------------------------------------
+# Plots
+# ---------------------------------------------------------
+if plot_interannual_variation == True:
+    xlim = [datetime(years[0], 1, 1), datetime(years[-1], 12, 31)]
     
+    # --- DSWT ---
+    fig = plt.figure(figsize=(8, 6))
+    # DSWT occurrence
+    ax1 = plt.subplot(2, 1, 1)
+    ax1 = plot_histogram_multiple_years(time_y, f_dswt_y*100,
+                                        ylabel='DSWT occurrence (%)',
+                                        ylim=[0, 40], color=color_dswt,
+                                        ax=ax1, show=False)
+    ax1 = plot_yearly_grid(ax1, years)
+    ax1.set_xlim(xlim)
+    ax1.set_xticklabels([])
+    ax1 = add_subtitle(ax1, '(a) DSWT yearly mean occurrence')
+    
+    # DSWT transport
+    ax2 = plt.subplot(2, 1, 2)
+    ax2 = plot_histogram_multiple_years(time_y, transport_dswt_y*10**-6,
+                                        ylabel='DSWT transport (10$^9$ m$^3$/m)',
+                                        ylim=[0, 3.0],
+                                        color=color_transport,
+                                        ax=ax2, show=False)
+    ax2 = plot_yearly_grid(ax2, years)
+    ax2.set_xlim(xlim)
+    ax2 = add_subtitle(ax2, '(b) DSWT yearly transport')
+    
+    plt.savefig('plots/dswt_interannual.jpg', bbox_inches='tight', dpi=300)
+    plt.close()
+    
+    # --- DSWT and climate variability ---
+    fig = plt.figure(figsize=(8, 10))
+    # DSWT occurrence anomaly
+    ax1 = plt.subplot(5, 1, 1)
+    ax1 = plot_histogram_multiple_years(time_y, (f_dswt_y-np.nanmean(f_dswt_y))*100,
+                                        ylabel='DSWT occurence\nanomaly (%)',
+                                        ylim=[-10., 10.],
+                                        color=color_dswt,
+                                        ax=ax1, show=False)
+    ax1.plot(xlim, [0, 0], '-k')
+    ax1 = plot_yearly_grid(ax1, years)
+    ax1.set_xlim(xlim)
+    ax1.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+    ax1 = add_subtitle(ax1, '(a) DSWT yearly occurrence anomaly')
+    
+    # DSWT transport anomaly
+    ax2 = plt.subplot(5, 1, 2)
+    ax2 = plot_histogram_multiple_years(time_y, (transport_dswt_y-np.nanmean(transport_dswt_y))*10**-6,
+                                        ylabel='DSWT transport\nanomaly (m$^3$/m)',
+                                        ylim = [-1.5, 1.5],
+                                        color=color_transport,
+                                        ax=ax2, show=False)
+    ax2.plot(xlim, [0, 0], '-k')
+    ax2 = plot_yearly_grid(ax2, years)
+    ax2.set_xlim(xlim)
+    ax2.set_xticklabels([])
+    ax2 = add_subtitle(ax2, '(b) DSWT yearly transport anomaly')
+    
+    # ENSO
+    ax3 = plt.subplot(5, 1, 3)
+    ax3 = plot_histogram_multiple_years(time_y, mei_y,
+                                        ylabel='Multivariate ENSO\nIndex v2',
+                                        ylim=[-2.0, 2.0],
+                                        color=[color_neg, color_pos], c_change=0.0,
+                                        ax=ax3, show=False)
+    ax3.plot(xlim, [0, 0], '-k')
+    ax3.text(add_month_to_time(xlim[1], 3), 2.0, 'EL NINO', rotation='vertical', va='top', ha='left')
+    ax3.text(add_month_to_time(xlim[1], 3), -2.0, 'LA NINA', rotation='vertical', va='bottom', ha='left')
+    ax3 = plot_yearly_grid(ax3, years)
+    ax3.set_xlim(xlim)
+    ax3.set_xticklabels([])
+    ax3 = add_subtitle(ax3, '(c) El Nino indicator (MEI-v2)')
+    
+    # surface heat flux anomaly
+    ax4 = plt.subplot(5, 1, 4)
+    ax4.plot(time_y, shflux_y-np.nanmean(shflux_y), '-', color=color_pos)
+    ax4.set_ylabel('Surface heat flux\nanomaly (W/m$^2$)')
+    ax4.plot(xlim, [0, 0], '-k')
+    ax4 = plot_yearly_grid(ax4, years)
+    ax4.set_xlim(xlim)
+    ax4.set_xticklabels([])
+    ax4.set_ylim([-30., 30.])
+    ax4 = color_y_axis(ax4, color_pos, 'left')
+    
+    # surface salt flux
+    ax5 = ax4.twinx()
+    ax5.plot(time_y, ssflux_y-np.nanmean(ssflux_y), '-', color=color_neg)
+    ax5.set_ylabel('Surface salt flux\nanomaly (m/s)')
+    ax5.set_ylim([-6.0*10**-7, 6.0*10**-7])
+    ax5 = color_y_axis(ax5, color_neg, 'right')
+    
+    ax5 = add_subtitle(ax5, '(d) Surface flux anomalies')
+    
+    # wind speed & direction
+    ax6 = plt.subplot(5, 1, 5)
+    ax6.plot(time_y, wind_vel_y-np.nanmean(wind_vel_y), '-', color=color_dswt)
+    ax6.plot(xlim, [0, 0], '-k')
+    ax6.set_ylabel('Wind speed\nanomaly (m/s)')
+    ax6.set_ylim([-0.4, 0.4])
+    ax6 = plot_yearly_grid(ax6, years)
+    ax6.set_xlim(xlim)
+    ax6 = add_subtitle(ax6, '(f) Wind anomaly')
+
+    plt.savefig('plots/dswt_interannual_climate.jpg', bbox_inches='tight', dpi=300)
+    plt.close()
+    
+def get_monthly_climatology(time:np.ndarray, values:np.ndarray):
     values_mean = []
     for m in range(1, 13):
         l_month = [t.month == m for t in time]
         values_mean.append(np.nanmean(values[l_month]))
     
-    values_mean = np.tile(values_mean, int(len(time)/len(values_mean)))
-    
-    if len(values_mean) != len(time):
-        raise ValueError(f'Unequal lengths for time and monthly climatology')
-    
-    return values_mean
+    return np.array(values_mean)
 
-def read_f_dswt_from_csvs(input_paths:list[str], means='monthly') -> tuple[np.ndarray[datetime], np.ndarray[float]]:
-    time = np.array([])
-    f_dswt = np.array([])
-    for input_path in input_paths:
-        df = pd.read_csv(input_path)
-        time_daily = pd.to_datetime(df['time'].values)
-        f_dswt_daily = df['f_dswt'].values
+if plot_specific_years == True:
+    f_dswt_mc = get_monthly_climatology(time_m, f_dswt_m)
+    transport_dswt_mc = get_monthly_climatology(time_m, transport_dswt_m)
+    shflux_mc = get_monthly_climatology(time_m, shflux_m)
+    ssflux_mc = get_monthly_climatology(time_m, ssflux_m)
+    wind_vel_mc = get_monthly_climatology(time_m, wind_vel_m)
+    wind_dir_mc = get_monthly_climatology(time_m, wind_dir_m)
+    
+    for year in years:
+        l_time = get_l_time_range(time_m, datetime(year, 1, 1), datetime(year, 12, 31))
+        xlim = [datetime(year, 1, 1), datetime(year, 12, 31)]
         
-        if means == 'yearly':
-            time_y, f_dswt_y = get_yearly_means(time_daily, f_dswt_daily)
-        elif means == 'monthly':
-            time_y, f_dswt_y = get_monthly_means(time_daily, f_dswt_daily)
-        elif means == 'daily':
-            time_y = time_daily
-            f_dswt_y = f_dswt_daily
-        else:
-            log.info(f'Unknown mean method requested: {means}. Using daily values.')
-            time_y = time_daily
-            f_dswt_y = f_dswt_daily
-        
-        time = np.concatenate((time, time_y))
-        f_dswt = np.concatenate((f_dswt, f_dswt_y))
-    
-    f_dswt_mean = get_means(time, f_dswt, means)
-    
-    return time, f_dswt, f_dswt_mean
-
-input_paths = []
-for year in years:
-    input_paths.append(f'{input_dir}{model}_{year}_{domain}.csv')
-
-time, f_dswt, f_dswt_mean = read_f_dswt_from_csvs(input_paths, means=means)
-
-# --- load climate indices ---
-time_dmi, dmi = read_dmi_data(year_range=[years[0], years[-1]])
-if means == 'yearly':
-    time_dmi, dmi = get_yearly_means(time_dmi, dmi)
-
-time_mei, mei = read_mei_data(year_range=[years[0], years[-1]])
-if means == 'yearly':
-    time_mei, mei = get_yearly_means(time_mei, mei)
-    
-if means == 'yearly':
-    time_fmsl, fmsl = read_yearly_fremantle_msl()
-elif means == 'monthly':
-    time_fmsl, fmsl = read_monthly_fremantle_msl()
-l_time_fmsl = get_l_time_range(time_fmsl, time[0], time[-1].replace(year=time[-1].year+1))
-time_fmsl = time_fmsl[l_time_fmsl]
-fmsl = fmsl[l_time_fmsl]
-fmsl = fmsl-np.nanmean(fmsl) # mean sea level anomaly
-
-# --- load atmosphere data ---
-input_paths_sflux = []
-for year in years:
-    input_paths_sflux.append(f'{input_dir}sflux/sflux_{model}_{year}_{domain}.csv')
-time_sflux_d, shflux, ssflux = read_surface_fluxes_from_csvs(input_paths_sflux)
-
-if means == 'yearly':
-    time_sflux, shflux = get_yearly_means(time_sflux_d, shflux)
-    _, ssflux = get_yearly_means(time_sflux_d, ssflux)
-elif means == 'monthly':
-    time_sflux, shflux = get_monthly_means(time_sflux_d, shflux)
-    _, ssflux = get_monthly_means(time_sflux_d, ssflux)
-shflux_mean = get_means(time_sflux, shflux, means)
-ssflux_mean = get_means(time_sflux, ssflux, means)
-    
-input_paths_wind = []
-for year in years:
-    input_paths_wind.append(f'{input_dir}wind/wind_{model}_{year}_{domain}.csv')
-time_wind_d, u, v, vel, dir = read_wind_from_csvs(input_paths_wind)
-
-if means == 'yearly':
-    time_wind, vel = get_yearly_means(time_wind_d, vel)
-    _, dir = get_yearly_means(time_wind_d, dir)
-elif means == 'monthly':
-    time_wind, vel = get_monthly_means(time_wind_d, vel)
-    _, dir = get_monthly_means(time_wind_d, dir)
-vel_mean = get_means(time_wind, vel, means)
-dir_mean = get_means(time_wind, dir, means)
-
-# ---------------------------------------------------------
-# Plot tools
-# ---------------------------------------------------------
-if means == 'yearly':
-    ylim_dswt = [0, 40]
-    ylim_shflux = [-100, 0]
-    ylim_ssflux = [0, 1.5*10**(-6)]
-    ylim_wind = [6.0, 7.0]
-    ylim_wdir = [135, 225]
-    ylim_fmsl = [-120, 120]
-else:
-    ylim_dswt = [0, 100]
-    ylim_shflux = [-300, 300]
-    ylim_ssflux = [-3*10**(-6), 3*10**(-6)]
-    ylim_wind = [4, 8]
-    ylim_wdir = [135, 225]
-    ylim_fmsl = [-270, 270]
-
-def _plot_yearly_grid(ax:plt.axes, years:list) -> plt.axes:
-    ax.set_xticks([datetime(y, 7, 2) for y in years]) # ticks in the middle of the year
-    plt.tick_params(axis='x', length=0)
-    ax.set_xticklabels(years, rotation='vertical')
-    
-    ylim = ax.get_ylim()
-    for y in years: # plot grid to show years
-        ax.plot([datetime(y, 1, 1), datetime(y, 1, 1)], ylim, '-', color='#808080', alpha=0.2)
-        
-    return ax
-
-def plot_monthly_grid(ax:plt.axes, year:int) -> plt.axes:
-    plt.tick_params(axis='x', length=0)
-    ylim = ax.get_ylim()
-    for m in range(1, 13):
-        date = datetime(year, m, 1)
-        ax.plot([date, date], ylim, '-', color='#808080', alpha=0.2)
-        
-    return ax
-
-def _color_y_axis(ax:plt.axes, color:str, spine_location:str):
-    ax.spines[spine_location].set_color(color)
-    ax.tick_params(axis='y', colors=color)
-    ax.yaxis.label.set_color(color)
-    return ax
-
-def _wind_dir_ticks(ax:plt.axes) -> plt.axes:
-    yticks = [0, 45, 90, 135, 180, 225, 270, 315, 360]
-    ytick_labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N']
-    ax.set_yticks(yticks)
-    ax.set_yticklabels(ytick_labels)
-    return ax
-
-# ---------------------------------------------------------
-# Interannual variation plots
-# ---------------------------------------------------------
-if plot_interannual_variation == True:
-    xlim = [datetime(years[0], 1, 1), datetime(years[-1], 12, 31)]
-    
-    fig = plt.figure(figsize=(10, 12))
-
-    # DSWT
-    ax1 = plt.subplot(5, 1, 1)
-    ax1 = plot_histogram_multiple_years(time, f_dswt*100,
-                                        ylabel='DSWT occurrence (%)', ylim=ylim_dswt, color=ocean_blue,
-                                        ax=ax1, show=False)
-    ax1.set_xlim(xlim)
-    ax1.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
-    ax1.plot(time, f_dswt_mean*100, '--', color='#808080')
-
-    # IOD
-    ax2 = plt.subplot(5, 1, 2)
-    ax2 = plot_histogram_multiple_years(time_dmi, dmi, ylabel='Dipole Mode Index ($^o$C)', ylim=[-2., 2.],
-                                        color=[color_neg, color_pos], c_change=0,
-                                        ax=ax2, show=False)
-    ax2.plot(xlim, [0, 0], '-k')
-    ax2.text(add_month_to_time(xlim[0], 3), 2.0, 'IOD+', rotation='vertical', va='top', ha='left')
-    ax2.text(add_month_to_time(xlim[0], 3), -2.0, 'IOD-', rotation='vertical', va='bottom', ha='left')
-    ax2.set_xlim(xlim)
-    ax2.set_xticklabels([])
-
-    # ENSO
-    ax3 = plt.subplot(5, 1, 3)
-    ax3 = plot_histogram_multiple_years(time_mei, mei, ylabel='Multivariate ENSO Index v2', ylim=[-3., 3.],
-                                        color=[color_neg, color_pos], c_change=0,
-                                        ax=ax3, show=False)
-    ax3.plot(xlim, [0, 0], '-k')
-    ax3.text(add_month_to_time(xlim[0], 3), 3.0, 'EL NINO', rotation='vertical', va='top', ha='left')
-    ax3.text(add_month_to_time(xlim[0], 3), -3.0, 'LA NINA', rotation='vertical', va='bottom', ha='left')
-    ax3.set_xlim(xlim)
-    ax3.set_xticklabels([])
-    
-    ax33 = ax3.twinx()
-    ax33.plot(time_fmsl, fmsl, '-', color=ocean_blue, linewidth=0.5)
-    ax33.set_ylabel('Fremantle MSL anomaly\n(mm)')
-    ax33 = _color_y_axis(ax33, ocean_blue, 'right')
-    ax33.set_ylim(ylim_fmsl)
-
-    # Surface fluxes
-    ax4 = plt.subplot(5, 1, 4)
-    ax4.plot(xlim, [0, 0], '-k')
-    ax4.plot(time_sflux, shflux, '-', color=color_pos)
-    ax4.set_xlim(xlim)
-    ax4.set_ylim(ylim_shflux)
-    ax4.set_ylabel('Surface heat flux\n(W/m$^2$)')
-    
-    ax4 = _color_y_axis(ax4, color_pos, 'left')
-    ax4 = _plot_yearly_grid(ax4, years)
-    ax4.set_xticklabels([])
-    
-    ax4.plot(time_sflux, shflux_mean, '--', color=color_pos, alpha=0.5)
-    
-    ax5 = ax4.twinx()
-    ax5.plot(time_sflux, ssflux, '-', linewidth=0.5, color=color_neg)
-    ax5.set_ylabel('Surface salt flux (m/s)')
-    ax5.set_ylim(ylim_ssflux)
-    
-    ax5.plot(time_sflux, ssflux_mean, '--', color=color_neg, linewidth=0.5, alpha=0.5)
-    
-    ax5 = _color_y_axis(ax5, color_neg, 'right')
-
-    # Wind
-    ax6 = plt.subplot(5, 1, 5)
-    ax6.plot(time_wind, vel, '-', color=ocean_blue)
-    ax6.set_xlim(xlim)
-    ax6.set_ylim(ylim_wind)
-    ax6.set_ylabel('Wind speed (m/s)')
-    
-    ax6.plot(time_wind, vel_mean, '--', color=ocean_blue, alpha=0.5)
-    
-    ax6 = _color_y_axis(ax6, ocean_blue, 'left')
-    ax6 = _plot_yearly_grid(ax6, years)
-    
-    ax7 = ax6.twinx()
-    ax7.plot(time_wind, dir, '-', color='k', linewidth=0.5)
-    ax7.set_ylabel('Wind direction')
-    ax7 = _wind_dir_ticks(ax7)
-    ax7.set_ylim(ylim_wdir)
-    
-    ax7.plot(time_wind, dir_mean, '--', color='k', linewidth=0.5, alpha=0.5)
-    
-    ax7 = _color_y_axis(ax7, 'k', 'right')
-
-    # Save
-    if output_path_interannual is not None:
-        # save figure
-        plt.savefig(output_path_interannual, bbox_inches='tight', dpi=300)
-    
-    if show is True:
-        plt.show()
-    else:
-        plt.close()
-
-# ---------------------------------------------------------
-# Specific year plot
-# ---------------------------------------------------------
-if plot_specific_year == True:
-    for specific_year in specific_years:
-        output_path_year = f'{output_str_specific_years}{specific_year}.jpg'
-        xlim = [datetime(specific_year, 1, 1), datetime(specific_year, 12, 31)]
-        
-        fig = plt.figure(figsize=(10, 12))
-
-        # DSWT
+        # --- Timeseries ---
+        fig = plt.figure(figsize=(8, 10))
+        # DSWT occurrence
         ax1 = plt.subplot(5, 1, 1)
-        l_time = get_l_time_range(time, xlim[0], xlim[1])
-        ax1, xticks, xticklabels = plot_monthly_histogram(time[l_time], f_dswt[l_time]*100, ylabel='DSWT occurrence (%)',
-                                                        ylim=ylim_dswt, color=ocean_blue, time_is_center=True,
-                                                        ax=ax1, show=False)
-        ax1.plot(time, f_dswt_mean*100, '--', color='#808080')
-        
-        ax1 = plot_monthly_grid(ax1, specific_year)
+        ax1, xticks, xlabels = plot_monthly_histogram(time_m[l_time], f_dswt_m[l_time]*100,
+                                     ylabel='DSWT occurrence (%)',
+                                     ylim=[0, 100],
+                                     time_is_center=True,
+                                     color=color_dswt,
+                                     ax=ax1, show=False)
+        ax1.plot(time_m[l_time], f_dswt_mc*100, '--', color=color_dswt)
+        ax1 = plot_monthly_grid(ax1, year)
         ax1.set_xlim(xlim)
+        ax1.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+        ax1 = add_subtitle(ax1, '(a) DSWT occurrence')
         
-        ax1.set_title(specific_year)
-
-        # IOD
+        # DSWT transport anomaly
         ax2 = plt.subplot(5, 1, 2)
-        l_time_dmi = get_l_time_range(time_dmi, xlim[0], xlim[1])
-        ax2, _, _ = plot_monthly_histogram(time_dmi[l_time_dmi], dmi[l_time_dmi], ylabel='Dipole Mode Index ($^o$C)', ylim=[-2., 2.],
-                                        color=[color_neg, color_pos], c_change=0, time_is_center=True,
-                                        ax=ax2, show=False)
-        ax2 = plot_monthly_grid(ax2, specific_year)
-        ax2.plot(xlim, [0, 0], '-k')
-        ax2.text(xlim[1]+timedelta(days=3), 2.0, 'IOD+', rotation='vertical', va='top', ha='left')
-        ax2.text(xlim[1]+timedelta(days=3), -2.0, 'IOD-', rotation='vertical', va='bottom', ha='left')
+        ax2, _, _ = plot_monthly_histogram(time_m[l_time], transport_dswt_m[l_time]*10**-6,
+                                     ylabel='DSWT transport (m$^3$/m)',
+                                     ylim=[0.0, 1.3],
+                                     color=color_transport,
+                                     time_is_center=True,
+                                     ax=ax2, show=False)
+        ax2.plot(time_m[l_time], transport_dswt_mc*10**-6, '--', color=color_transport)
+        ax2 = plot_monthly_grid(ax2, year)
         ax2.set_xlim(xlim)
         ax2.set_xticklabels([])
-
+        ax2 = add_subtitle(ax2, '(b) DSWT transport')
+        
         # ENSO
         ax3 = plt.subplot(5, 1, 3)
-        l_time_mei = get_l_time_range(time_mei, xlim[0], xlim[1])
-        ax3, _, _ = plot_monthly_histogram(time_mei[l_time_mei], mei[l_time_mei], ylabel='Multivariate ENSO Index v2', ylim=[-3., 3.],
-                                        color=[color_neg, color_pos], c_change=0, time_is_center=True,
-                                        ax=ax3, show=False)
-        ax3 = plot_monthly_grid(ax3, specific_year)
+        ax3, _, _ = plot_monthly_histogram(time_m[l_time], mei_m[l_time],
+                                     ylabel='Multivariate ENSO\nIndex v2',
+                                     ylim=[-2.5, 2.5],
+                                     color=[color_neg, color_pos], c_change=0.0,
+                                     time_is_center=True,
+                                     ax=ax3, show=False)
         ax3.plot(xlim, [0, 0], '-k')
-        ax3.text(xlim[1]+timedelta(days=3), 3.0, 'EL NINO', rotation='vertical', va='top', ha='left')
-        ax3.text(xlim[1]+timedelta(days=3), -3.0, 'LA NINA', rotation='vertical', va='bottom', ha='left')
+        ax3.text(xlim[1]+timedelta(days=3), 2.5, 'EL NINO', rotation='vertical', va='top', ha='left')
+        ax3.text(xlim[1]+timedelta(3), -2.5, 'LA NINA', rotation='vertical', va='bottom', ha='left')
+        ax3 = plot_monthly_grid(ax3, year)
         ax3.set_xlim(xlim)
         ax3.set_xticklabels([])
-
-        # Surface fluxes
+        ax3 = add_subtitle(ax3, '(c) El Nino indicator (MEI-v2)')
+        
+        # surface heat flux anomaly
         ax4 = plt.subplot(5, 1, 4)
+        ax4.plot(time_m[l_time], shflux_m[l_time], '-', color=color_pos)
+        ax4.plot(time_m[l_time], shflux_mc, '--', color=color_pos, linewidth=0.5)
+        ax4.set_ylabel('Surface heat flux (W/m$^2$)')
         ax4.plot(xlim, [0, 0], '-k')
-        ax4.plot(time_sflux, shflux, '-', color=color_pos)
-        ax4.plot(time_sflux, shflux_mean, '--', color=color_pos, alpha=0.5)
-        
-        ax4.set_xticks(xticks)
-        ax4.set_xticklabels([])
         ax4.set_xlim(xlim)
-        ax4.set_ylim(ylim_shflux)
-        ax4.set_ylabel('Surface heat flux\n(W/m$^2$)')
+        ax4.set_xticklabels([])
+        ax4.set_ylim([-300., 300.])
+        ax4 = plot_monthly_grid(ax4, year)
+        ax4 = color_y_axis(ax4, color_pos, 'left')
         
-        ax4 = plot_monthly_grid(ax4, specific_year)
-        ax4 = _color_y_axis(ax4, color_pos, 'left')
-        
+        # surface salt flux
         ax5 = ax4.twinx()
-        ax5.plot(time_sflux, ssflux, '-', linewidth=0.5, color=color_neg)
-        ax5.plot(time_sflux, ssflux_mean, '--', color=color_neg, linewidth=0.5, alpha=0.5)
-        ax5.set_xlim(xlim)
+        ax5.plot(time_m[l_time], ssflux_m[l_time], '-', color=color_neg)
+        ax5.plot(time_m[l_time], ssflux_mc, '--', color=color_neg, linewidth=0.5)
         ax5.set_ylabel('Surface salt flux (m/s)')
-        ax5.set_ylim(ylim_ssflux)
+        ax5.set_ylim([-3.0*10**-6, 3.0*10**-6])
+        ax5 = color_y_axis(ax5, color_neg, 'right')
         
-        ax5 = _color_y_axis(ax5, color_neg, 'right')
-
-        # Wind
+        ax5 = add_subtitle(ax5, '(d) Surface fluxes')
+        
+        # wind speed & direction
         ax6 = plt.subplot(5, 1, 5)
-        ax6.plot(time_wind, vel, '-', color=ocean_blue)
-        ax6.plot(time_wind, vel_mean, '--', color=ocean_blue, alpha=0.5)
-        
-        ax6.set_xticks(xticks)
-        ax6.set_xticklabels(xticklabels)
-        ax6.set_xlim(xlim)
-        ax6.set_ylim(ylim_wind)
+        ax6.plot(time_m[l_time], wind_vel_m[l_time], '-', color=color_dswt)
+        ax6.plot(time_m[l_time], wind_vel_mc, '--', color=color_dswt, linewidth=0.5)
         ax6.set_ylabel('Wind speed (m/s)')
-        
-        ax6 = plot_monthly_grid(ax6, specific_year)
-        ax6 = _color_y_axis(ax6, ocean_blue, 'left')
+        ax6.set_ylim([4.0, 10.0])
+        ax6 = plot_monthly_grid(ax6, year)
+        ax6.set_xticks(xticks)
+        ax6.set_xticklabels(xlabels)
+        ax6.set_xlim(xlim)
+        ax6 = color_y_axis(ax6, color_dswt, 'left')
+        ax6 = add_subtitle(ax6, '(f) Wind')
         
         ax7 = ax6.twinx()
-        ax7.plot(time_wind, dir, '-', color='k', linewidth=0.5)
-        ax7.plot(time_wind, dir_mean, '--', color='k', linewidth=0.5, alpha=0.5)
-        ax7.set_xlim(xlim)
-        ax7.set_ylabel('Wind direction')
-        ax7 = _wind_dir_ticks(ax7)
-        ax7.set_ylim(ylim_wdir)
-        
-        ax7 = _color_y_axis(ax7, 'k', 'right')
+        ax7.plot(time_m[l_time], wind_dir_m[l_time], '-', color='k')
+        ax7.plot(time_m[l_time], wind_dir_mc, '--', color='k', linewidth=0.5)
+        ax7.set_ylabel(['Wind direction'])
+        ax7 = add_wind_dir_ticks(ax7)
+        ax7.set_ylim([90, 270])
 
-        # Save
-        if output_path_year is not None:
-            # save figure
-            plt.savefig(output_path_year, bbox_inches='tight', dpi=300)
-        
-        if show is True:
-            plt.show()
-        else:
-            plt.close()
+        plt.savefig(f'plots/dswt_{year}.jpg', bbox_inches='tight', dpi=300)
+        plt.close()
+    

@@ -37,6 +37,38 @@ def _get_center_label_width_for_multi_monthly_bar_plot(time:np.ndarray[datetime]
     width = 0.8*np.array([1/n_bars*t.days for t in dt])
     return center_times, width, str_time, str_labels
 
+def _get_center_label_width_for_multi_year_bar_plot(time:np.ndarray[datetime], n_bars:int) -> tuple:
+    time = np.array([datetime(t.year, 1, 1) for t in time])
+    time_plus = np.append(time, datetime(time[-1].year+1, 1, 1))
+    dt = np.diff(time_plus)
+    str_time = np.array(time+dt/2)
+    str_labels = np.array([t.year for t in time])
+    center_times = []
+    for n in range(n_bars):
+        center_times.append(np.array(time+(n+1)/n_bars*dt-1/n_bars*dt/2))
+    width = 0.8*np.array([1/n_bars*t.days for t in dt])
+    return center_times, width, str_time, str_labels
+
+def plot_yearly_grid(ax:plt.axes, years:list) -> plt.axes:
+    ax.set_xticks([datetime(y, 7, 2) for y in years]) # ticks in the middle of the year
+    plt.tick_params(axis='x', length=0)
+    ax.set_xticklabels(years, rotation='vertical')
+    
+    ylim = ax.get_ylim()
+    for y in years: # plot grid to show years
+        ax.plot([datetime(y, 1, 1), datetime(y, 1, 1)], ylim, '-', color='#808080', alpha=0.2)
+        
+    return ax
+
+def plot_monthly_grid(ax:plt.axes, year:int) -> plt.axes:
+    plt.tick_params(axis='x', length=0)
+    ylim = ax.get_ylim()
+    for m in range(1, 13):
+        date = datetime(year, m, 1)
+        ax.plot([date, date], ylim, '-', color='#808080', alpha=0.2)
+        
+    return ax
+
 def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[float],
                                   ylabel='', ylim=None,
                                   color='#25419e', c_change=None,
@@ -128,6 +160,31 @@ def plot_multi_bar_monthly_histogram(time:np.ndarray[datetime], values:list[np.n
                                      labels:list, ylabel='', ylim=None, legend_loc='upper right',
                                      ax=None, show=True) -> plt.axes:
     center_times, width, str_time, str_labels = _get_center_label_width_for_multi_monthly_bar_plot(time, len(values))
+    
+    if ax is None:
+        ax = plt.axes()
+        
+    for i in range(len(values)):
+        ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i])
+    
+    ax.set_xticks(str_time)
+    ax.set_xticklabels(str_labels)
+    
+    l = ax.legend(loc=legend_loc)
+    
+    ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    
+    if show is True:
+        plt.show()
+    else:
+        return ax, l
+
+def plot_multi_bar_yearly_histogram(time:np.ndarray[datetime], values:list[np.ndarray[float]], colors:list,
+                                     labels:list, ylabel='', ylim=None, legend_loc='upper right',
+                                     ax=None, show=True) -> plt.axes:
+    center_times, width, str_time, str_labels = _get_center_label_width_for_multi_year_bar_plot(time, len(values))
     
     if ax is None:
         ax = plt.axes()
