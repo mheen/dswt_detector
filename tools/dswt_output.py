@@ -27,12 +27,21 @@ def get_input_paths(input_dir:str, path_str:str, years:list) -> list[str]:
         
     return input_paths
 
-def calculate_total_daily_transport(input_path:str, transects:dict) -> np.ndarray:
-    df = pd.read_csv(input_path)
+def add_total_transport_to_df(df:pd.DataFrame, transects:dict) -> np.ndarray:
     ts = df.loc[df['time']==df['time'][0]]['transect'].values
     widths = np.array([transects[t]['width'] for t in ts])
     widths_all = np.tile(widths, len(pd.unique(df['time'])))    
     df['total_transport'] = df['transport_dswt'].values*widths_all
+    return df
+
+def calculate_yearly_transport_per_transect(input_path:str) -> np.ndarray:
+    df = pd.read_csv(input_path)
+    df_transects = df.set_index(['time', 'transect']).groupby('transect').sum()
+    return df_transects.index.values, df_transects['transport_dswt'].values
+
+def calculate_total_daily_transport(input_path:str, transects:dict) -> np.ndarray:
+    df = pd.read_csv(input_path)
+    df = add_total_transport_to_df(df, transects)
 
     df_daily_sum = df.set_index(['time', 'transect']).groupby('time').sum()
     daily_transport = df_daily_sum['total_transport'].values

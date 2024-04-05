@@ -1,29 +1,36 @@
-from tools.dswt_output import get_domain_str, read_dswt_output, get_monthly_dswt_values, get_yearly_dswt_values
+from tools.dswt_output import get_domain_str, read_dswt_output, get_monthly_dswt_values, get_yearly_dswt_values, calculate_yearly_transport_per_transect
 from tools.dswt_output import get_sflux_data, get_wind_data, get_monthly_atmosphere_data, get_yearly_atmosphere_data
 from tools.dswt_output import get_monthly_yearly_mei_data
+from tools.files import get_dir_from_json
 from transects import get_transects_in_lon_lat_range
+from tools.config import read_config
 
-from plot_tools.basic_timeseries import plot_multi_bar_yearly_histogram
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_monthly_histogram
 from plot_tools.basic_timeseries import plot_yearly_grid, plot_monthly_grid
 from plot_tools.general import color_y_axis, add_subtitle, add_wind_dir_ticks
+from plot_tools.basic_maps import plot_basic_map, plot_contours
 from tools.timeseries import add_month_to_time, get_l_time_range
 
 import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
 import numpy as np
 from datetime import datetime, timedelta
+import xarray as xr
 
 # ---------------------------------------------------------
 # USER INPUT
 # ---------------------------------------------------------
 plot_interannual_variation = False
-plot_specific_years = True
+plot_specific_years = False
+plot_maps_specific_years = True
 
 years = np.arange(2000, 2023)
 
 model = 'cwa'
 lon_range = [114.0, 116.0]
 lat_range = [-33.0, -31.0]
+meridians = [114.0, 115.0, 116.0]
+parallels = [-33.0, -32.0, -31.0]
 
 color_dswt = '#25419e'
 color_transport = '#0e6e22'
@@ -39,6 +46,10 @@ main_input_dir = f'output/{model}_{domain}/'
 
 transects = get_transects_in_lon_lat_range(f'input/transects/{model}_transects.json', lon_range, lat_range)
 total_transect_width = np.sum(transects[t]['width'] for t in list(transects.keys()))
+
+config = read_config(model)
+
+ds_grid = xr.load_dataset(f'{get_dir_from_json(model)}grid.nc')
 
 # --- DSWT data ---
 time, f_dswt, vel_dswt, transport_dswt = read_dswt_output(main_input_dir, years, transects)
@@ -206,6 +217,7 @@ if plot_specific_years == True:
         ax1.set_xlim(xlim)
         ax1.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
         ax1 = add_subtitle(ax1, '(a) DSWT occurrence')
+        ax1.set_title(year)
         
         # DSWT transport anomaly
         ax2 = plt.subplot(5, 1, 2)
@@ -280,5 +292,37 @@ if plot_specific_years == True:
         ax7.set_ylim([90, 270])
 
         plt.savefig(f'plots/dswt_{year}.jpg', bbox_inches='tight', dpi=300)
+        plt.close()
+
+if plot_maps_specific_years == True:
+    clevel_transport = np.nanmean(config.dswt_cross_shelf_transport_depth_range)
+    
+    for year in years:
+        ts, transect_transport = calculate_yearly_transport_per_transect(f'{main_input_dir}dswt_{year}.csv')
+        
+        lons = np.array([transects[t]['lon_ocean'] for t in ts])
+        lats = np.array([transects[t]['lat_ocean'] for t in ts])
+        
+        fig = plt.figure(figsize=(6, 8))
+        ax = plt.axes(projection=ccrs.PlateCarree())
+        ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
+        ax = plot_contours(ds_grid.lon_rho.values, ds_grid.lat_rho.values, ds_grid.h.values,
+                           lon_range=lon_range, lat_range=lat_range,
+                           clevels=[clevel_transport],
+                           ax=ax, show=False)
+        ax = plot_contours(ds_grid.lon_rho.values, ds_grid.lat_rho.values, ds_grid.h.values,
+                           lon_range=lon_range, lat_range=lat_range,
+                           clevels=[200], linewidths=0.5, clabel=False,
+                           ax=ax, show=False)
+        
+        c = ax.scatter(lons, lats, c=transect_transport*10**-6, s=10, marker='o', cmap='viridis', vmin=0, vmax=10)
+        l, b, w, h = ax.get_position().bounds
+        cbax = fig.add_axes([l+w+0.02, b, 0.03, h])
+        cbar = plt.colorbar(c, cax=cbax)
+        cbar.set_label('DSWT transport (m$^3$/m)')
+        ax = add_subtitle(ax, f'Yearly DSWT transport per transect across {int(clevel_transport)} m contour', location='upper left')
+        ax.set_title(year)
+        
+        plt.savefig(f'plots/dswt_map_{year}.jpg', bbox_inches='tight', dpi=300)
         plt.close()
     
