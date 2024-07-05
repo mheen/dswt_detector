@@ -2,6 +2,18 @@ from geographiclib.geodesic import Geodesic
 import numpy as np
 import json
 
+def get_angle_between_bearings(bearing1:float, bearing2:float) -> float:
+    # bearings in degrees
+    angle = abs(bearing1 - bearing2) % 360 # % is modulo operator: gives remainder
+    if angle > 180.0:
+        angle = 360. - angle
+    return angle # angle in degrees
+
+def get_point_from_bearing_and_distance(lon0:float, lat0:float, bearing:float, dist:float) -> float:
+    geod = Geodesic.WGS84
+    g = geod.Direct(lat0, lon0, bearing, dist)
+    return g['lon2'], g['lat2']
+
 def get_bearing_between_points(lon1, lat1, lon2, lat2):
     geod = Geodesic.WGS84
     g = geod.Inverse(lat1, lon1, lat2, lon2)
