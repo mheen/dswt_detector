@@ -14,6 +14,7 @@ import json
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
 from plot_tools.basic_maps import plot_basic_map, plot_contours, add_grid
 from plot_tools.general import add_subtitle
 import cartopy.crs as ccrs
@@ -269,7 +270,7 @@ def plot_example_transect_method(lon:np.ndarray,
     ax.fill(x, y, edgecolor='k', facecolor='#d2d2d2')
     ax = add_grid(ax, meridians, parallels, 'bottom', 'left', False)
     ax.set_extent([lon_range[0], lon_range[1], lat_range[0], lat_range[1]], ccrs.PlateCarree())
-    ax = plot_contours(lon, lat, h, clevels=[shelf_depth], lon_range=lon_range, lat_range=lat_range, ax=ax1)
+    ax = plot_contours(lon, lat, h, clevels=[50, 100, shelf_depth], lon_range=lon_range, lat_range=lat_range, ax=ax)
     
     lon_p = transects[example_transect]['lon_ocean']
     lat_p = transects[example_transect]['lat_ocean']
@@ -296,6 +297,10 @@ def plot_example_transect_method(lon:np.ndarray,
         
     ax.plot(lon[eta, xi], lat[eta, xi], '-', color='#25419e', linewidth=1.0)
     
+    # legend
+    legend_elements = [Patch(facecolor='#d2d2d2', edgecolor='k', label='ROMS landmask')]
+    ax.legend(handles=legend_elements, loc='lower right')
+    
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
     if show is True:
@@ -320,7 +325,7 @@ def plot_transects(transects:dict,
     if ax is None:
         ax = plt.axes(projection=ccrs.PlateCarree())
     ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
-    ax = plot_contours(roms_lon, roms_lat, roms_h, clevels=[200],
+    ax = plot_contours(roms_lon, roms_lat, roms_h, clevels=[50, 100, 200],
                         lon_range=lon_range, lat_range=lat_range, ax=ax, clabel=False)
     
     transect_names = list(transects.keys())
@@ -354,7 +359,7 @@ def plot_transect_grid_coverage(transects:dict,
                                 output_path=None,
                                 show=True,
                                 colorbar=True,
-                                vmin=0,
+                                vmin=1,
                                 vmax=5,
                                 cmap='cividis') -> plt.axes:
     transect_names = list(transects.keys())
@@ -374,13 +379,14 @@ def plot_transect_grid_coverage(transects:dict,
     if ax is None:
         ax = plt.axes(projection=ccrs.PlateCarree())
     ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
-    ax = plot_contours(roms_lon, roms_lat, roms_h, clevels=[200],
+    ax = plot_contours(roms_lon, roms_lat, roms_h, clevels=[50, 100, 200],
                         lon_range=lon_range, lat_range=lat_range, ax=ax)
         
     c = ax.pcolormesh(roms_lon, roms_lat, grid_coverage, vmin=vmin, vmax=vmax, cmap=cmap)
     if colorbar is True:
         cbar = plt.colorbar(c)
         cbar.set_label('Grid cell in transects (#)')
+        cbar.set_ticks(np.arange(vmin, vmax+1, 1))
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -394,7 +400,6 @@ if __name__ == '__main__':
     grid_file = f'{model_input_dir}grid.nc'
     grid_ds = xr.open_dataset(grid_file)
     
-    
     output_path = 'plots/si/cwa_transects.jpg'
     
     lon_range = [114.5, 116.0]
@@ -405,7 +410,7 @@ if __name__ == '__main__':
     transect_interval = 5
     example_transect = 't240'
     
-    transects_file = 'input/transects/cwa_transects.json'
+    transects_file = 'input/transects/cwa_transects_new.json'
     if not os.path.exists(transects_file):
         generate_transects_json_file(grid_ds, transects_file)
     
@@ -434,6 +439,7 @@ if __name__ == '__main__':
     cbax = fig.add_axes([l3+w3+0.02, b3, 0.02, h3])
     cbar = plt.colorbar(c, cax=cbax)
     cbar.set_label('Grid cell in transects (#)')
+    cbar.set_ticks(np.arange(1, 6, 1))
     ax3.set_yticklabels([])
     ax3 = add_subtitle(ax3, '(c) Grid cell coverage')
     
