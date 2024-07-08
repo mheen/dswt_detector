@@ -7,6 +7,9 @@ from dataclasses import dataclass
 
 @dataclass
 class Config:
+    transect_contours: list
+    angle_tolerance: float
+    max_distance_contours: float
     drhodz_depth_percentage: float
     minimum_percentage_consecutive_cells: float
     filter_depth: float
@@ -36,6 +39,9 @@ def read_config(model:str, input_path='input/configs/main_config.toml') -> dict:
             config['cross_shelf_interior_layers_percentage'] = 1.0-config['cross_shelf_bottom_layers_percentage']-config['cross_shelf_surface_layers_percentage']
  
     return Config(
+        transect_contours = config['transect_contours'],
+        angle_tolerance = config['angle_tolerance'],
+        max_distance_contours = config['max_distance_contours'],
         drhodz_depth_percentage = config['drhodz_depth_percentage'],
         minimum_percentage_consecutive_cells = config['minimum_percentage_consecutive_cells'],
         filter_depth = config['filter_depth'],
