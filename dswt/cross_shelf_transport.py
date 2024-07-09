@@ -100,33 +100,38 @@ def calculate_dswt_cross_shelf_transport_along_transect(
     config:Config) -> tuple[np.ndarray, np.ndarray]:
 
     if np.all(l_dswt) == False:
-        return np.zeros(len(l_dswt)), np.zeros(len(l_dswt))
+        return np.nan, np.nan, np.nan, np.nan, np.nan
     
     transect_ds = add_down_transect_velocity_to_ds(transect_ds)
+
+    transport = np.empty(len(transect_ds.distance))*np.nan
+    mean_vel = np.empty(len(transect_ds.distance))*np.nan
     
-    transport = np.zeros(len(transect_ds.ocean_time))
-    mean_vel = np.zeros(len(transect_ds.ocean_time))
     i_dswt = np.where(l_dswt == True)[0] # times where there is DSWT
-    i_dists = np.where(np.logical_and(transect_ds.h.values >= config.dswt_cross_shelf_transport_depth_range[0],
-                            transect_ds.h.values <= config.dswt_cross_shelf_transport_depth_range[1]))[0] # locations for depth range
+
     n_z_layers = len(transect_ds.s_rho)
     n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage)) # depth layers to consider for DSWT
     for i in i_dswt:
-        # calculate transport over all depth layers below first spike in drho/dz
-        transport_over_depth_range = []
-        mean_vel_over_depth_range = []
+        # locations along transect where drho/dz condition is met:
+        i_dists = np.where(transect_ds.vertical_density_gradient[i, 0:n_depth_layers, :] >= config.minimum_drhodz)[1]
+        if len(i_dists) == 0:
+            continue # drho/dz condition not satisfied: should not really end up here since there should be DSWT somewhere in the transect
+        
+        i_dists = np.unique(i_dists)
         for j in i_dists:
             i_depth = np.where(transect_ds.vertical_density_gradient[i, 0:n_depth_layers, j] >= config.minimum_drhodz)[0]
             if len(i_depth) == 0:
                 continue # drho/dz condition not satisfied at this location along shelf
+            
+            # calculate transport over all depth layers below first spike in drho/dz
             k = i_depth[-1]
-            transport_over_depth_range.append(np.nansum(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values) # m2
-            mean_vel_over_depth_range.append(np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j]))
-        
-        if len(transport_over_depth_range) == 0:
-            continue # drho/dz condition not satisfied over entire depth range: transport = 0
-        
-        transport[i] = np.nanmean(transport_over_depth_range) # m2 (per transect)
-        mean_vel[i] = np.nanmean(mean_vel_over_depth_range) # m/s
+            # mean with already existing values at locations
+            transport[j] = np.nanmean([transport[j], np.nansum(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values])
+            mean_vel[j] = np.nanmean([mean_vel[j], np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j])])
     
-    return transport, mean_vel
+    l_nonzero = np.logical_or(~np.isnan(transport), ~np.isnan(mean_vel))
+    
+    if np.sum(l_nonzero) == 0:
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+    
+    return transport[l_nonzero], mean_vel[l_nonzero], transect_ds.lon_rho.values[l_nonzero], transect_ds.lat_rho.values[l_nonzero], transect_ds.h.values[l_nonzero]

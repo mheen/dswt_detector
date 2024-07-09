@@ -150,10 +150,23 @@ def select_roms_subset(roms_ds:xr.Dataset,
     
     return subset_ds
 
-def select_roms_transect(roms_ds:xr.Dataset,
-                         lon1:float, lat1:float,
-                         lon2:float, lat2:float,
-                         ds=500.) -> xr.Dataset:
+def select_roms_transect_from_known_coordinates(roms_ds:xr.Dataset, eta:np.ndarray, xi:np.ndarray) -> xr.Dataset:
+    etas = xr.DataArray(eta, dims='distance') # conversion to xr.DataArray needed to select individual points (rather than grid)
+    xis = xr.DataArray(xi, dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later
+   
+    transect_ds = roms_ds.sel(xi_rho=xis, eta_rho=etas)
+    
+    distance = get_distance_along_transect(transect_ds.lon_rho.values, transect_ds.lat_rho.values)
+    transect_ds.coords['distance'] = distance
+    
+    return transect_ds
+
+def select_roms_transect_from_start_end_coordinates(
+    roms_ds:xr.Dataset,
+    lon1:float, lat1:float,
+    lon2:float, lat2:float,
+    ds=500.
+    ) -> xr.Dataset:
     eta, xi = get_eta_xi_along_transect(roms_ds.lon_rho.values, roms_ds.lat_rho.values, lon1, lat1, lon2, lat2, ds)
     etas = xr.DataArray(eta, dims='distance') # conversion to xr.DataArray needed to select individual points (rather than grid)
     xis = xr.DataArray(xi, dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later

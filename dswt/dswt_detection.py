@@ -2,7 +2,12 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
-from readers.read_ocean_data import select_roms_transect
+from tools.files import get_dir_from_json
+from tools.config import read_config
+from transects import read_transects_in_lon_lat_range_from_json
+from readers.read_ocean_data import load_roms_data
+
+from readers.read_ocean_data import select_roms_transect_from_known_coordinates
 from dswt.cross_shelf_transport import calculate_dswt_cross_shelf_transport_along_transect
 from tools.config import Config
 from itertools import groupby
@@ -90,19 +95,23 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
     
     transect_names = list(transects.keys())
     
-    df_transects_dswt = pd.DataFrame(index=np.arange(0, len(transect_names)), columns=['time', 'transect', 'f_dswt', 'vel_dswt', 'transport_dswt'])
+    df_transects_dswt = pd.DataFrame(index=np.arange(0, len(transect_names)),
+                                     columns=['time', 'transect', 'f_dswt', 'vel_dswt', 'transport_dswt', 'lon_transport', 'lat_transport', 'depth_transport'])
     time = pd.to_datetime(roms_ds.ocean_time.values[0]).date()
+    row = 0
     for i, transect_name in enumerate(transect_names):
-        lon_land = transects[transect_name]['lon_land']
-        lat_land = transects[transect_name]['lat_land']
-        lon_ocean = transects[transect_name]['lon_ocean']
-        lat_ocean = transects[transect_name]['lat_ocean']
+        eta = transects[transect_name]['eta']
+        xi = transects[transect_name]['xi']
         
-        transect_ds = select_roms_transect(roms_ds, lon_land, lat_land, lon_ocean, lat_ocean)
+        transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
         l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
         
-        dswt_cross_transport, dswt_cross_vel = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
-
-        df_transects_dswt.loc[i] = [time, transect_name, np.nanmean(l_dswt.astype(int)), np.nanmean(dswt_cross_vel), np.nansum(dswt_cross_transport)]
+        dswt_cross_transport, dswt_cross_vel, lon, lat, h = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
+        if np.all(np.isnan(dswt_cross_transport)):
+            continue
+        
+        for j in range(len(lon)):
+            df_transects_dswt.loc[row] = [time, transect_name, np.nanmean(l_dswt.astype(int)), dswt_cross_vel[j], dswt_cross_transport[j], lon[j], lat[j], h[j]]
+            row += 1
         
     return df_transects_dswt
