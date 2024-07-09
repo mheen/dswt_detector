@@ -177,14 +177,16 @@ def remove_transects_from_file(transects:dict, remove_transects:list, output_pat
         log.info('Did not make any changes to transects file.')
 
 if __name__ == '__main__':
-    grid_file = f'{get_dir_from_json("cwa")}grid.nc'
-    grid_ds = xr.load_dataset(grid_file)
+    transects_file = 'input/transects/cwa_transects.json'
     
     lon_range = [114.0, 116.0]
     lat_range = [-33.0, -31.0]
     
-    transects = read_transects_in_lon_lat_range_from_json('input/transects/cwa_transects.json', lon_range, lat_range)
+    grid_file = f'{get_dir_from_json("cwa")}grid.nc'
+    grid_ds = xr.load_dataset(grid_file)
+    
+    transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
     config = read_config('cwa')
     
     remove_transects = remove_transects_in_plot(transects, grid_ds, config, lon_range, lat_range)
-    remove_transects_from_file(transects, remove_transects, 'input/transects/test.json')
+    remove_transects_from_file(transects, remove_transects, transects_file)
