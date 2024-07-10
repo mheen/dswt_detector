@@ -107,11 +107,31 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
         l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
         
         dswt_cross_transport, dswt_cross_vel, lon, lat, h = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
-        if np.all(np.isnan(dswt_cross_transport)):
-            continue
         
-        for j in range(len(lon)):
+        for j in range(len(dswt_cross_transport)):
             df_transects_dswt.loc[row] = [time, transect_name, np.nanmean(l_dswt.astype(int)), dswt_cross_vel[j], dswt_cross_transport[j], lon[j], lat[j], h[j]]
             row += 1
         
     return df_transects_dswt
+
+if __name__ == '__main__':
+    output_dswt = 'output/cwa_114-116E_33-31S/dswt_2017.csv'
+    
+    model_input_dir = get_dir_from_json('cwa')
+    files = ['cwa_20170603_03__his.nc', 'cwa_20170101_00__his.nc']
+    grid_file = f'{model_input_dir}grid.nc'
+    
+    lon_range = [114., 116.]
+    lat_range = [-33., -31.]
+    transects = read_transects_in_lon_lat_range_from_json('input/transects/cwa_transects.json', lon_range, lat_range)
+    
+    config = read_config('cwa')
+    
+    for i in range(len(files)):
+        roms_ds = load_roms_data(f'{model_input_dir}2017/{files[i]}', grid_file=grid_file)
+        
+        df_transects_dswt = determine_daily_dswt_along_multiple_transects(roms_ds, transects, config)
+        if os.path.exists(output_dswt):
+            df_transects_dswt.to_csv(output_dswt, mode='a', header=False, index=False)
+        else:
+            df_transects_dswt.to_csv(output_dswt, index=False)

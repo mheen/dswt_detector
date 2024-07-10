@@ -100,7 +100,7 @@ def calculate_dswt_cross_shelf_transport_along_transect(
     config:Config) -> tuple[np.ndarray, np.ndarray]:
 
     if np.all(l_dswt) == False:
-        return np.nan, np.nan, np.nan, np.nan, np.nan
+        return [0.0], [0.0], [np.nan], [np.nan], [np.nan]
     
     transect_ds = add_down_transect_velocity_to_ds(transect_ds)
 
@@ -129,9 +129,10 @@ def calculate_dswt_cross_shelf_transport_along_transect(
             transport[j] = np.nanmean([transport[j], np.nansum(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values])
             mean_vel[j] = np.nanmean([mean_vel[j], np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j])])
     
-    l_nonzero = np.logical_or(~np.isnan(transport), ~np.isnan(mean_vel))
+    l_nonzero = np.logical_and(np.logical_and(~np.isnan(transport), transport != 0.0),
+                              np.logical_and(~np.isnan(mean_vel), mean_vel != 0.0))
     
     if np.sum(l_nonzero) == 0:
-        return np.nan, np.nan, np.nan, np.nan, np.nan
+        return [0.0], [0.0], [np.nan], [np.nan], [np.nan]
     
     return transport[l_nonzero], mean_vel[l_nonzero], transect_ds.lon_rho.values[l_nonzero], transect_ds.lat_rho.values[l_nonzero], transect_ds.h.values[l_nonzero]
