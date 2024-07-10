@@ -6,10 +6,13 @@ from readers.read_climate_indices import read_mei_data
 from readers.surface_fluxes import read_surface_fluxes_from_csvs
 from readers.read_meteo_data import read_wind_from_csvs
 from tools.timeseries import get_monthly_means, get_monthly_sums, get_yearly_means, get_yearly_sums
+from tools.roms import get_eta_xi_of_lon_lat_point
+from tools.files import get_dir_from_json
 
 import numpy as np
 import pandas as pd
 from datetime import datetime
+import xarray as xr
 
 def get_domain_str(lon_range:list, lat_range:list) -> str:
     lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
@@ -27,43 +30,70 @@ def get_input_paths(input_dir:str, path_str:str, years:list) -> list[str]:
         
     return input_paths
 
-def add_total_transport_to_df(df:pd.DataFrame, transects:dict) -> np.ndarray:
-    ts = df.loc[df['time']==df['time'][0]]['transect'].values
-    widths = np.array([transects[t]['width'] for t in ts])
-    widths_all = np.tile(widths, len(pd.unique(df['time'])))    
-    df['total_transport'] = df['transport_dswt'].values*widths_all
-    return df
-
-def calculate_yearly_transport_per_transect(input_path:str) -> np.ndarray:
+def get_monthly_transport_maps(input_path:str,
+                               lon:np.ndarray[float], lat:np.ndarray[float]) -> tuple[np.ndarray[datetime],
+                                                                                       np.ndarray[float], np.ndarray[float],
+                                                                                       np.ndarray[float]]:
     df = pd.read_csv(input_path)
-    df_transects = df.set_index(['time', 'transect']).groupby('transect').sum()
-    return df_transects.index.values, df_transects['transport_dswt'].values
+    time = [datetime.strptime(t, '%Y-%m-%d') for t in df['time'].values]
+    year = np.unique([t.year for t in time])[0]
+    months = np.unique([t.month for t in time])
+    
+    time_months = []
+    transport_dswt = np.zeros((len(months), lon.shape[0], lon.shape[1]))
+    transport_count = np.zeros(lon.shape)
+    
+    for i, month in enumerate(months):
+        time_months.append(datetime(year, month, 15))
+        df_month = df[[t.month == month for t in time]]
+        lon_t = df_month['lon_transport'].values
+        lat_t = df_month['lat_transport'].values
+        t_dswt = df_month['transport_dswt']
+        
+        l_nonan = np.logical_and(~np.isnan(lon_t), ~np.isnan(lat_t))
+        if sum(l_nonan) == 0:
+            continue
+        
+        eta, xi = get_eta_xi_of_lon_lat_point(lon, lat, lon_t[l_nonan], lat_t[l_nonan])
+        transport_dswt[i, eta, xi] += t_dswt[l_nonan]
+        transport_count[eta, xi] += 1
+        transport_dswt[i, :, :] = transport_dswt[i, :, :]/transport_count
+        
+    transport_dswt[transport_dswt == 0] = np.nan
+        
+    return np.array(time_months), lon, lat, transport_dswt
 
-def calculate_total_daily_transport(input_path:str, transects:dict) -> np.ndarray:
-    df = pd.read_csv(input_path)
-    df = add_total_transport_to_df(df, transects)
+def read_multifile_transport_maps(input_dir:str, years:list,
+                                  lon:np.ndarray, lat:np.ndarray) -> tuple[np.ndarray[datetime], np.ndarray[float],
+                                                                           np.ndarray[float], np.ndarray[float]]:
+    input_paths = get_input_paths(input_dir, 'dswt', years)
+    time = np.array([])
+    transport_dswt = np.array([]).reshape(0, lon.shape[0], lon.shape[1])
+    
+    for input_path in input_paths:
+        time_y, _, _, transport_y = get_monthly_transport_maps(input_path, lon, lat)
+        time = np.concatenate((time, time_y))
+        transport_dswt = np.concatenate((transport_dswt, transport_y), axis=0)
+        
+    return time, lon, lat, transport_dswt
 
-    df_daily_sum = df.set_index(['time', 'transect']).groupby('time').sum()
-    daily_transport = df_daily_sum['total_transport'].values
-    return daily_transport
-
-def read_dswt_output(input_dir:str, years:list, transects:dict, path_str='dswt') -> tuple:
-    # add check to see if number of lines in each file is as expected and raise warning if not
-    input_paths = get_input_paths(input_dir, path_str, years)
+def read_multifile_timeseries(input_dir:str, years:list) -> tuple[np.ndarray[datetime], np.ndarray[float],
+                                                                  np.ndarray[float], np.ndarray[float]]:
+    input_paths = get_input_paths(input_dir, 'dswt', years)
     time = np.array([])
     f_dswt = np.array([])
     vel_dswt = np.array([])
     transport_dswt = np.array([])
+    
     for input_path in input_paths:
-        df = pd.read_csv(input_path, index_col=['time', 'transect'])
-        df_daily_mean = df.groupby('time').mean()
+        df = pd.read_csv(input_path)
+        df_daily_mean = (df.groupby(['time', 'transect']).mean()).groupby('time').mean() # both time and transect because there are multiple values for transect
         time = np.concatenate((time, np.array([datetime.strptime(t, '%Y-%m-%d') for t in df_daily_mean.index.values])))
         f_dswt = np.concatenate((f_dswt, df_daily_mean['f_dswt'].values))
         vel_dswt = np.concatenate((vel_dswt, df_daily_mean['vel_dswt'].values))
-        # calculate total transport (x transect width) separately
-        transport_dswt_i = calculate_total_daily_transport(input_path, transects)
-        transport_dswt = np.concatenate((transport_dswt, transport_dswt_i))
-    
+        transport_dswt = np.concatenate((transport_dswt, df_daily_mean.groupby('time').sum()['transport_dswt'].values)) # m2
+        # note: transport here is the mean along each transect and then the daily sum over all transects
+        
     return time, f_dswt, vel_dswt, transport_dswt
 
 def get_monthly_dswt_values(time:np.ndarray,
@@ -112,3 +142,10 @@ def get_yearly_atmosphere_data(time:np.ndarray, y1:np.ndarray, y2:np.ndarray) ->
     time_y, y1_y = get_yearly_means(time, y1)
     _, y2_y = get_yearly_means(time, y2)
     return time_y, y1_y, y2_y
+
+if __name__ == '__main__':
+    model_input_dir = get_dir_from_json('cwa')
+    grid_file = f'{model_input_dir}grid.nc'
+    grid_ds = xr.open_dataset(grid_file)
+    
+    time, lon, lat, transport = get_monthly_transport_maps('output/test.csv', grid_ds.lon_rho.values, grid_ds.lat_rho.values)
