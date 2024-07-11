@@ -83,7 +83,15 @@ def get_eta_xi_of_lon_lat_point(lon:np.ndarray, lat:np.ndarray,
 
 def get_eta_xi_along_transect(lon:np.ndarray, lat:np.ndarray,
                               lon1:float, lat1:float,
-                              lon2:float, lat2:float, ds:float) -> tuple:
+                              lon2:float, lat2:float, ds=None) -> tuple:
+    
+    if ds is None:
+        dx = np.nanmean(np.unique(np.diff(lon, axis=1)))
+        dy = np.nanmean(np.unique(np.diff(lat, axis=0)))
+        x = np.nanmean(lon)
+        y = np.nanmean(lat)
+        ds = get_distance_between_points(x, y, x+dx, y+dy)/4
+        
     lons, lats = get_points_on_line_between_points(lon1, lat1, lon2, lat2, ds)
     etas, xis = get_eta_xi_of_lon_lat_point(lon, lat, lons, lats)
 

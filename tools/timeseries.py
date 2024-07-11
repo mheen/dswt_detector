@@ -75,8 +75,8 @@ def get_monthly_sums(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
         add_date = add_month_to_time(start_date, n_months)
 
     for n in range(n_months+1):
-        start_date = add_month_to_time(time[0], n)
-        end_date = add_month_to_time(time[0], n+1)
+        start_date = add_month_to_time(datetime(time[0].year, time[0].month, 1), n)
+        end_date = add_month_to_time(start_date, 1)-timedelta(days=1)
         l_time = get_l_time_range(time, start_date, end_date)
         monthly_time.append(start_date+timedelta(seconds=(end_date-start_date).total_seconds()/2))
         monthly_values.append(np.nansum(values[l_time], axis=time_axis))
@@ -96,8 +96,8 @@ def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
         add_date = add_month_to_time(start_date, n_months)
 
     for n in range(n_months+1):
-        start_date = add_month_to_time(time[0], n)
-        end_date = add_month_to_time(time[0], n+1)
+        start_date = add_month_to_time(datetime(time[0].year, time[0].month, 1), n)
+        end_date = add_month_to_time(start_date, 1)-timedelta(days=1)
         l_time = get_l_time_range(time, start_date, end_date)
         monthly_time.append(start_date+timedelta(seconds=(end_date-start_date).total_seconds()/2))
         monthly_values.append(np.nanmean(values[l_time], axis=time_axis))

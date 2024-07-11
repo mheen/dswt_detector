@@ -1,7 +1,9 @@
-from readers.read_ocean_data import load_roms_data, select_roms_subset, select_input_files
-from transects import generate_transects_json_file, get_transects_dict_from_json, get_transects_in_lon_lat_range
+from transects import generate_transects_json_file, read_transects_in_lon_lat_range_from_json
+from guis.transect_removal import interactive_transect_removal
+from guis.transect_addition import interactive_transect_addition
+from readers.read_ocean_data import load_roms_data, select_input_files
+
 from dswt.dswt_detection import determine_daily_dswt_along_multiple_transects
-from dswt.cross_shelf_transport import calculate_daily_mean_cross_shelf_transport_at_depth_contour
 from tools.dswt_output import get_domain_str
 from tools.config import Config, read_config
 from tools import log
@@ -17,7 +19,8 @@ from warnings import warn
 # User input
 # --------------------------------------------------------
 model = 'cwa'
-years = np.arange(2000, 2024)
+# years = np.arange(2000, 2024)
+years = [2017]
 
 # --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
@@ -50,19 +53,37 @@ transects_file = f'{transects_dir}{model}_transects.json'
 # --------------------------------------------------------
 # 1. Create transects
 # --------------------------------------------------------
+log.info('''----------------------------------------------
+               Creating transects
+            ----------------------------------------------''')
 # create transects and save to .json file if file does not already exist
 if not os.path.exists(transects_file):
     grid_ds = xr.open_dataset(grid_file)
-    generate_transects_json_file(grid_ds, transects_file)
+    generate_transects_json_file(grid_ds, config, transects_file)
+    
+    # plot to check transects and remove obviously faulty ones
+    removed_transects = interactive_transect_removal(transects_file, grid_ds, config,
+                                                     lon_range=lon_range,
+                                                     lat_range=lat_range)
+    
+    # add transects in specific regions and from specific contour (useful when there are islands)
+    added_transects = interactive_transect_addition(transects_file, grid_ds, config,
+                                  lon_range=lon_range, lat_range=lat_range)
+    if added_transects == True:
+        # plot removal again to see if any of the added transects need to be removed
+        interactive_transect_removal(transects_file, grid_ds, config,
+                                     lon_range=lon_range,
+                                     lat_range=lat_range)
+    
 else:
     log.info(f'Transects file already exists, using existing file: {transects_file}')
-    
-# add GUI option to show transects and remove faulty ones?
-# report sanity check for width calculation
 
 # --------------------------------------------------------
 # 2. Input files check
 # --------------------------------------------------------
+log.info('''----------------------------------------------
+               Checking input file variables and format
+            ----------------------------------------------''')
 # check that files contain required variables (for 1 file)
 input_dir = f'{model_input_dir}{years[0]}/'
 roms_files = select_input_files(input_dir, file_preface=file_preface)
@@ -77,12 +98,16 @@ vars = list(ds_roms.keys()) + list(ds_roms.coords)
 for v in required_vars:
     if not v in vars:
         raise ValueError(f'Missing required ROMS variable: {v}')
+    
+# what if model uses rectilinear grid? it doesn't need all variables in that case (test with ozROMS?)
 
-# check that files contain daily data
+# check that files contain daily data -> need to allow for other formats as well?
 if len(ds_roms.ocean_time) > 0:
     hours = (pd.to_datetime(ds_roms.ocean_time.values[-1])-pd.to_datetime(ds_roms.ocean_time.values[0])).total_seconds()/(60*60)
     if hours > 24.0:
         raise ValueError(f'ROMS input files contain data spanning more than 1 day. Please convert input files to daily data.')
+    else:
+        log.info('Passed file check.')
 else:
     warn('Cannot determine if ROMS input files contain daily data. Please ensure they do.')
 
@@ -112,7 +137,11 @@ ds_roms = None
 # --------------------------------------------------------
 # 5. Detect DSWT & cross-shelf DSWT transport
 # --------------------------------------------------------
+log.info('''----------------------------------------------
+               Detecting DSWT
+            ----------------------------------------------''')
 for year in years:
+    log.info(f'Detecting DSWT for {year}')
     input_dir = f'{model_input_dir}{year}/'
     output_dswt = f'{output_dir}dswt_{year}.csv'
     
@@ -125,12 +154,12 @@ for year in years:
             continue
         else:
             log.info(f'''Output partially exists for {year}. Running from {time_last+timedelta(days=1)} onwards.
-                     Please check to make sure that all transects were {time_last} were written to file.''')
+                     Please check to make sure that all transects for {time_last} were written to file.''')
             date_range = [time_last+timedelta(days=1), datetime(year, 12, 31)]
     else:
         date_range = [datetime(year, 1, 1), datetime(year, 12, 31)]
     
-    transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
+    transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
     roms_files = select_input_files(input_dir, file_preface=file_preface, date_range=date_range)
     roms_files.sort()
 
@@ -138,16 +167,12 @@ for year in years:
         # Load ROMS data
         ds_roms = load_roms_data(file, grid_file, drop_vars=drop_vars)
         
-        if lon_range is not None and lat_range is not None: # does this make computation faster?
-            ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
-        
         df_transects_dswt = determine_daily_dswt_along_multiple_transects(ds_roms, transects, config)
         
         if os.path.exists(output_dswt):
             df_transects_dswt.to_csv(output_dswt, mode='a', header=False, index=False)
         else:
             df_transects_dswt.to_csv(output_dswt, index=False)
-
 
 # --------------------------------------------------------
 # Output: timeseries and maps analyses and plots
