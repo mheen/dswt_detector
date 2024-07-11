@@ -1,8 +1,9 @@
-from tools.dswt_output import get_domain_str, read_dswt_output, get_monthly_dswt_values, get_yearly_dswt_values, calculate_yearly_transport_per_transect
+from tools.dswt_output import get_domain_str, get_monthly_dswt_values, get_yearly_dswt_values, read_multifile_timeseries, read_multifile_transport_maps
 from tools.dswt_output import get_sflux_data, get_wind_data, get_monthly_atmosphere_data, get_yearly_atmosphere_data
 from tools.dswt_output import get_monthly_yearly_mei_data
 from tools.files import get_dir_from_json
-from transects import get_transects_in_lon_lat_range
+from tools.timeseries import get_l_time_range
+from transects import read_transects_in_lon_lat_range_from_json
 from tools.config import read_config
 
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_monthly_histogram
@@ -44,22 +45,16 @@ color_neg = '#1e1677'
 domain = get_domain_str(lon_range, lat_range)
 main_input_dir = f'output/{model}_{domain}/'
 
-transects = get_transects_in_lon_lat_range(f'input/transects/{model}_transects.json', lon_range, lat_range)
-total_transect_width = np.sum(transects[t]['width'] for t in list(transects.keys()))
+transects = read_transects_in_lon_lat_range_from_json(f'input/transects/{model}_transects.json', lon_range, lat_range)
 
 config = read_config(model)
 
 ds_grid = xr.load_dataset(f'{get_dir_from_json(model)}grid.nc')
 
 # --- DSWT data ---
-time, f_dswt, vel_dswt, transport_dswt = read_dswt_output(main_input_dir, years, transects)
+time, f_dswt, vel_dswt, transport_dswt = read_multifile_timeseries(main_input_dir, years)
 time_m, f_dswt_m, vel_dswt_m, transport_dswt_m = get_monthly_dswt_values(time, f_dswt, vel_dswt, transport_dswt)
 time_y, f_dswt_y, vel_dswt_y, transport_dswt_y = get_yearly_dswt_values(time, f_dswt, vel_dswt, transport_dswt)
-
-# transport as m3/m
-transport_dswt = transport_dswt/total_transect_width
-transport_dswt_m = transport_dswt_m/total_transect_width
-transport_dswt_y = transport_dswt_y/total_transect_width
 
 # --- Climate index data ---
 _, mei_m, _, mei_y = get_monthly_yearly_mei_data(years)
@@ -95,7 +90,7 @@ if plot_interannual_variation == True:
     # DSWT transport
     ax2 = plt.subplot(2, 1, 2)
     ax2 = plot_histogram_multiple_years(time_y, transport_dswt_y*10**-6,
-                                        ylabel='DSWT transport (10$^9$ m$^3$/m)',
+                                        ylabel='DSWT transport (10$^9$ m$^2$)',
                                         ylim=[0, 3.0],
                                         color=color_transport,
                                         ax=ax2, show=False)
@@ -295,32 +290,34 @@ if plot_specific_years == True:
         plt.close()
 
 if plot_maps_specific_years == True:
-    clevel_transport = np.nanmean(config.dswt_cross_shelf_transport_depth_range)
+    model_input_dir = get_dir_from_json('cwa')
+    grid_file = f'{model_input_dir}grid.nc'
+    grid_ds = xr.open_dataset(grid_file)
+    
+    time, lon, lat, transport_dswt = read_multifile_transport_maps(main_input_dir, years,
+                                                                   grid_ds.lon_rho.values,
+                                                                   grid_ds.lat_rho.values)
     
     for year in years:
-        ts, transect_transport = calculate_yearly_transport_per_transect(f'{main_input_dir}dswt_{year}.csv')
         
-        lons = np.array([transects[t]['lon_ocean'] for t in ts])
-        lats = np.array([transects[t]['lat_ocean'] for t in ts])
+        l_time = get_l_time_range(time, datetime(year, 1, 1), datetime(year, 12, 31))
+        transport_yearly = np.nanmean(transport_dswt[l_time, :, :], axis=0)
         
         fig = plt.figure(figsize=(6, 8))
         ax = plt.axes(projection=ccrs.PlateCarree())
         ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
         ax = plot_contours(ds_grid.lon_rho.values, ds_grid.lat_rho.values, ds_grid.h.values,
                            lon_range=lon_range, lat_range=lat_range,
-                           clevels=[clevel_transport],
-                           ax=ax, show=False)
-        ax = plot_contours(ds_grid.lon_rho.values, ds_grid.lat_rho.values, ds_grid.h.values,
-                           lon_range=lon_range, lat_range=lat_range,
-                           clevels=[200], linewidths=0.5, clabel=False,
+                           clevels=[10, 50, 100, 200],
                            ax=ax, show=False)
         
-        c = ax.scatter(lons, lats, c=transect_transport*10**-6, s=10, marker='o', cmap='viridis', vmin=0, vmax=10)
+        c = ax.pcolormesh(lon, lat, transport_yearly, cmap='RdYlBu_r', vmin=5000, vmax=-5000)
+        
         l, b, w, h = ax.get_position().bounds
         cbax = fig.add_axes([l+w+0.02, b, 0.03, h])
         cbar = plt.colorbar(c, cax=cbax)
-        cbar.set_label('DSWT transport (m$^3$/m)')
-        ax = add_subtitle(ax, f'Yearly DSWT transport per transect across {int(clevel_transport)} m contour', location='upper left')
+        cbar.set_label('DSWT transport (m$^2$)')
+        ax = add_subtitle(ax, f'Yearly mean DSWT transport', location='upper left')
         ax.set_title(year)
         
         plt.savefig(f'plots/dswt_map_{year}.jpg', bbox_inches='tight', dpi=300)
