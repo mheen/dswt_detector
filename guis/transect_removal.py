@@ -38,11 +38,11 @@ def convert_land_mask_to_polygons(lon:np.ndarray[float], lat:np.ndarray[float], 
         
     return land_polys
 
-def _map_with_land_and_contours(ax:plt.axes,
-                                contours:list[shapely.LineString],
-                                land_polygons:list[shapely.Polygon],
-                                lon_range:list, lat_range:list,
-                                meridians:list, parallels:list):
+def map_with_land_and_contours(ax:plt.axes,
+                               contours:list[shapely.LineString],
+                               land_polygons:list[shapely.Polygon],
+                               lon_range:list, lat_range:list,
+                               meridians:list, parallels:list):
     
     lon_formatter = cticker.LongitudeFormatter()
     lat_formatter = cticker.LatitudeFormatter()
@@ -63,7 +63,7 @@ def _map_with_land_and_contours(ax:plt.axes,
     # plot contours
     for i in range(len(contours)):
         x, y = contours[i].coords.xy
-        ax.plot(x, y, '-k', linewidth=0.5)
+        ax.plot(x, y, '-k', linewidth=0.5, label=f'c{i}')
         
     return ax
 
@@ -80,7 +80,7 @@ def remove_transects_in_plot(transects:dict,
                              meridians=None,
                              parallels=None) -> plt.axes:
     
-    contours = get_depth_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values, config)
+    contours = get_depth_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values, config.transect_contours)
     land_polygons = convert_land_mask_to_polygons(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.mask_rho.values)
     
     if meridians == None:
@@ -96,7 +96,7 @@ def remove_transects_in_plot(transects:dict,
     # (a) transects
     ax = plt.subplot(1, 2, 1, projection=ccrs.PlateCarree())
     ax.set_title('Transects')
-    _map_with_land_and_contours(ax, contours, land_polygons, lon_range, lat_range, meridians, parallels)
+    map_with_land_and_contours(ax, contours, land_polygons, lon_range, lat_range, meridians, parallels)
     
     # plot transects
     transect_names = list(transects.keys())
@@ -120,7 +120,7 @@ def remove_transects_in_plot(transects:dict,
     
     ax2 = plt.subplot(1, 2, 2, projection=ccrs.PlateCarree())
     ax2.set_title('Grid cell coverage')
-    _map_with_land_and_contours(ax2, contours, land_polygons, lon_range, lat_range, meridians, parallels)
+    map_with_land_and_contours(ax2, contours, land_polygons, lon_range, lat_range, meridians, parallels)
     ax2.set_yticklabels([])
     c = ax2.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_coverage, vmin=vmin, vmax=vmax, cmap=cmap)
     # colorbar

@@ -12,7 +12,7 @@ import json
 import matplotlib.pyplot as plt
 
 def get_depth_contours(lon:np.ndarray, lat:np.ndarray, h:np.ndarray,
-                       config:Config) -> list[shapely.LineString]:
+                       depth_contours:list[float]) -> list[shapely.LineString]:
     '''Function determines depth contours at depths specified in config
     and returns them as a list of shapely.LineStrings. These
     are used to fit perpendicular transects as best as possible
@@ -28,13 +28,11 @@ def get_depth_contours(lon:np.ndarray, lat:np.ndarray, h:np.ndarray,
     lon: numpy 2d array with longitude points
     lat: numpy 2d array with latitude points
     h: numpy 2d array with depths (bathymetry)
-    config: Config object
+    depth_contours: list of contour depths to find
         
     Output:
     list of shapely.LineString with contours'''
-    
-    depth_contours = config.transect_contours
-    
+        
     if depth_contours[0] < np.ceil(np.nanmin(h)):
         depth_contours[0] = np.ceil(np.nanmin(h))
    
@@ -221,46 +219,9 @@ def find_transect_points_perpendicular_to_contours(lon_p:float, lat_p:float,
 
     return np.array(lons), np.array(lats)
 
-def generate_transects_json_file(ds_grid:xr.Dataset, config:Config, output_path:str):
-    '''Creates transects and saves them to a json file.
-    
-    Transects are created by:
-    1. determining equally spaced points on the shallowest contour line
-    2. determining the angle (bearing) of the contour in this point
-    3. finding the point perpendicular to the shelf on the next depth contour
-    4. determining the angle of this point on the depth contour
-    5. finding the next point perperdicular to the depth contour on the next depth contour
-    6. iterating steps 4-5 for all depth contours
-    
-    These points are stored as lon_org and lat_org in the transects dictionary and json file.
-    
-    The closest points in the ocean model along each transect are then determined, and the
-    eta, xi coordinates and corresponding lon, lat from the ocean model are stored in the
-    transects dictionary and json file.
-    
-    This is done by:
-    1. interpolating the transect found in the steps above to a higher resolution
-    2. finding the unique eta, xi indices of the ocean model on these points
-    3. determing the lon, lat values in the ocean model of these points
-    
-    Input:
-    - ds: xarray.Dataset containing ocean model grid data
-    - config: Config object
-    - output_path: string with filepath to write to
-      
-    Output:
-    json file with saved transects'''
-    
-    # get approximate grid resolution (in degrees):
-    dx = np.nanmean(np.unique(np.diff(ds_grid.lon_rho.values, axis=1)))
-    dy = np.nanmean(np.unique(np.diff(ds_grid.lat_rho.values, axis=0)))
-    ds = np.nanmin([dx, dy])
-
-    # get depth contours
-    contours = get_depth_contours(ds_grid.lon_rho.values, ds_grid.lat_rho.values, ds_grid.h.values, config)
-    # get starting points along shallowest depth contour
-    lon_ps, lat_ps = get_starting_points(contours[0], ds)
-        
+def find_transects_from_starting_points(ds_grid:xr.Dataset, contours:list[shapely.LineString],
+                                        lon_ps:np.ndarray[float], lat_ps:np.ndarray[float],
+                                        ds:float, config:Config, start_index=0):
     transects = {}
     
     for i in range(len(lon_ps)):
@@ -309,9 +270,54 @@ def generate_transects_json_file(ds_grid:xr.Dataset, config:Config, output_path:
         lons = ds_grid.lon_rho.values[etas, xis]
         lats = ds_grid.lat_rho.values[etas, xis]
         
-        transects[f't{i}'] = {'lon_org': list(lons_org), 'lat_org': list(lats_org),
+        transects[f't{start_index+i}'] = {'lon_org': list(lons_org), 'lat_org': list(lats_org),
                               'eta': [int(eta) for eta in etas], 'xi': [int(xi) for xi in xis],
                               'lon': list(lons), 'lat': list(lats)}
+        
+    return transects
+
+def generate_transects_json_file(ds_grid:xr.Dataset, config:Config, output_path:str):
+    '''Creates transects and saves them to a json file.
+    
+    Transects are created by:
+    1. determining equally spaced points on the shallowest contour line
+    2. determining the angle (bearing) of the contour in this point
+    3. finding the point perpendicular to the shelf on the next depth contour
+    4. determining the angle of this point on the depth contour
+    5. finding the next point perperdicular to the depth contour on the next depth contour
+    6. iterating steps 4-5 for all depth contours
+    
+    These points are stored as lon_org and lat_org in the transects dictionary and json file.
+    
+    The closest points in the ocean model along each transect are then determined, and the
+    eta, xi coordinates and corresponding lon, lat from the ocean model are stored in the
+    transects dictionary and json file.
+    
+    This is done by:
+    1. interpolating the transect found in the steps above to a higher resolution
+    2. finding the unique eta, xi indices of the ocean model on these points
+    3. determing the lon, lat values in the ocean model of these points
+    
+    Input:
+    - ds: xarray.Dataset containing ocean model grid data
+    - config: Config object
+    - output_path: string with filepath to write to
+      
+    Output:
+    json file with saved transects'''
+    
+    # get approximate grid resolution (in degrees):
+    dx = np.nanmean(np.unique(np.diff(ds_grid.lon_rho.values, axis=1)))
+    dy = np.nanmean(np.unique(np.diff(ds_grid.lat_rho.values, axis=0)))
+    ds = np.nanmin([dx, dy])
+
+    # get depth contours
+    contours = get_depth_contours(ds_grid.lon_rho.values, ds_grid.lat_rho.values, ds_grid.h.values, config.transect_contours)
+    # get starting points along shallowest depth contour
+    lon_ps, lat_ps = get_starting_points(contours[0], ds)
+        
+    # create transects from starting points
+    transects = find_transects_from_starting_points(ds_grid, contours, lon_ps, lat_ps, ds, config)
 
     log.info(f'Writing transects to json file: {output_path}')
     with open(output_path, 'w', encoding='utf-8') as f:
