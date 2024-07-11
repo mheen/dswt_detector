@@ -3,7 +3,7 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from tools.config import Config, read_config
-from transects import read_transects_in_lon_lat_range_from_json
+from transects import read_transects_dict_from_json
 from transects import get_depth_contours
 from tools.files import get_dir_from_json
 from tools import log
@@ -67,10 +67,10 @@ def map_with_land_and_contours(ax:plt.axes,
         
     return ax
 
-def remove_transects_in_plot(transects:dict,
+def remove_transects_in_plot(transects_file:str,
                              grid_ds:xr.Dataset,
                              config:Config,
-                             lon_range:list, lat_range:list,
+                             lon_range=None, lat_range=None,
                              transect_interval=1,
                              color='#C70039',
                              linewidth=1.0,
@@ -80,8 +80,14 @@ def remove_transects_in_plot(transects:dict,
                              meridians=None,
                              parallels=None) -> plt.axes:
     
+    transects = read_transects_dict_from_json(transects_file)
     contours = get_depth_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values, config.transect_contours)
     land_polygons = convert_land_mask_to_polygons(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.mask_rho.values)
+    
+    if lon_range == None:
+        lon_range = [np.floor(np.nanmin(grid_ds.lon_rho.values)), np.ceil(np.nanmax(grid_ds.lon_rho.values))]
+    if lat_range == None:
+        lat_range = [np.floor(np.nanmin(grid_ds.lat_rho.values)), np.ceil(np.nanmax(grid_ds.lat_rho.values))]
     
     if meridians == None:
         dx = (lon_range[1]-lon_range[0])/3
@@ -162,10 +168,11 @@ def remove_transects_in_plot(transects:dict,
     
     return removed_transects
 
-def remove_transects_from_file(transects:dict, remove_transects:list, output_path:str):
+def remove_transects_from_file(remove_transects:list, output_path:str):
     confirm = input(f'''Transects selected to remove: {remove_transects}
           Do you want to save to file? Y/N''')
     if confirm.lower().startswith('y'):
+        transects = read_transects_dict_from_json(output_path)
         for t in remove_transects:
             transects.pop(t)
     
@@ -176,17 +183,30 @@ def remove_transects_from_file(transects:dict, remove_transects:list, output_pat
     else:
         log.info('Did not make any changes to transects file.')
 
+def interactive_transect_removal(transects_file:str, grid_ds:xr.Dataset, config:Config,
+                                 lon_range=None, lat_range=None, transect_interval=1,
+                                 color='#C70039', linewidth=1.0, vmin=1, vmax=5, cmap='cividis',
+                                 meridians=None, parallels=None) -> bool:
+    removed_transects_bool = False
+    remove_transects = remove_transects_in_plot(transects_file, grid_ds, config,
+                                                lon_range=lon_range, lat_range=lat_range,
+                                                transect_interval=transect_interval, color=color,
+                                                linewidth=linewidth, vmin=vmin, vmax=vmax,
+                                                cmap=cmap, meridians=meridians, parallels=parallels)
+    if len(remove_transects) != 0:
+        removed_transects_bool = True
+        remove_transects_from_file(remove_transects, transects_file)
+    else:
+        log.info('No transects selected to remove, did not make any changes to transects file.')
+        
+    return removed_transects_bool
+
 if __name__ == '__main__':
     transects_file = 'input/transects/cwa_transects.json'
-    
-    lon_range = [114.0, 116.0]
-    lat_range = [-33.0, -31.0]
     
     grid_file = f'{get_dir_from_json("cwa")}grid.nc'
     grid_ds = xr.load_dataset(grid_file)
     
-    transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
     config = read_config('cwa')
     
-    remove_transects = remove_transects_in_plot(transects, grid_ds, config, lon_range, lat_range)
-    remove_transects_from_file(transects, remove_transects, transects_file)
+    interactive_transect_removal(transects_file, grid_ds, config)

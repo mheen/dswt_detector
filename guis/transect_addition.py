@@ -18,18 +18,24 @@ import numpy as np
 import xarray as xr
 import json
 
-def transect_addition_plot(transects:dict,
+def transect_addition_plot(transects_file:str,
                            grid_ds:xr.Dataset,
                            config:Config,
-                           lon_range:list, lat_range:list,
+                           lon_range=None, lat_range=None,
                            transect_interval=1,
                            color='#C70039',
                            linewidth=1.0,
                            meridians=None,
-                           parallels=None):
-    
+                           parallels=None) -> tuple[plt.figure, plt.axes]:
+        
+    transects = read_transects_dict_from_json(transects_file)
     contours = get_depth_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values, config.transect_contours)
     land_polygons = convert_land_mask_to_polygons(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.mask_rho.values)
+    
+    if lon_range == None:
+        lon_range = [np.floor(np.nanmin(grid_ds.lon_rho.values)), np.ceil(np.nanmax(grid_ds.lon_rho.values))]
+    if lat_range == None:
+        lat_range = [np.floor(np.nanmin(grid_ds.lat_rho.values)), np.ceil(np.nanmax(grid_ds.lat_rho.values))]
     
     if meridians == None:
         dx = (lon_range[1]-lon_range[0])/3
@@ -59,7 +65,7 @@ def transect_addition_plot(transects:dict,
         
     return fig, ax
 
-class InteractiveTrasectAddition:
+class InteractiveTransectAddition:
     def __init__(self, fig, ax):
         self.fig = fig
         self.ax = ax
@@ -149,8 +155,9 @@ class InteractiveTrasectAddition:
         plt.show()
 
 def add_transects(add_polygon:shapely.Polygon, i_start_contour:int,
-                  ds_grid:xr.Dataset, config:Config, output_path:str):
+                  ds_grid:xr.Dataset, config:Config, output_path:str) -> bool:
     
+    added_transects_bool = False
     # get approximate grid resolution (in degrees):
     dx = np.nanmean(np.unique(np.diff(ds_grid.lon_rho.values, axis=1)))
     dy = np.nanmean(np.unique(np.diff(ds_grid.lat_rho.values, axis=0)))
@@ -174,28 +181,37 @@ def add_transects(add_polygon:shapely.Polygon, i_start_contour:int,
     new_transects = find_transects_from_starting_points(ds_grid, contours, lon_ps, lat_ps, ds, config,
                                                     start_index=transect_keys[-1]+1)
     
-    transects_all.update(new_transects) # add new transects to existing ones
+    if len(new_transects) != 0:
+        added_transects_bool = True
+        transects_all.update(new_transects) # add new transects to existing ones
 
-    log.info(f'Appending additional transects to json file: {output_path}')
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(transects_all, f, ensure_ascii=False, indent=4)
+        log.info(f'Appending additional transects to json file: {output_path}')
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(transects_all, f, ensure_ascii=False, indent=4)
         
-    return transects
+    return added_transects_bool
+
+def interactive_transect_addition(transects_file:str, grid_ds:xr.Dataset, config:Config,
+                                  lon_range=None, lat_range=None, transect_interval=1,
+                                  color='#C70039', linewidth=1.0, meridians=None, parallels=None) -> bool:
+    
+    fig, ax = transect_addition_plot(transects_file, grid_ds, config,
+                                     lon_range=lon_range, lat_range=lat_range, transect_interval=transect_interval,
+                                     color=color, linewidth=linewidth, meridians=meridians, parallels=parallels)
+    interactive_addition = InteractiveTransectAddition(fig, ax)
+    interactive_addition.show()
+    add_polygon = shapely.Polygon(list(zip(interactive_addition.lons, interactive_addition.lats)))
+
+    added_transects_bool = add_transects(add_polygon, interactive_addition.c, grid_ds, config, transects_file)
+    
+    return added_transects_bool
+
 if __name__ == '__main__':
     transects_file = 'input/transects/cwa_transects.json'
-    
-    lon_range = [114.0, 116.0]
-    lat_range = [-33.0, -31.0]
     
     grid_file = f'{get_dir_from_json("cwa")}grid.nc'
     grid_ds = xr.load_dataset(grid_file)
     
-    transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
     config = read_config('cwa')
     
-    fig, ax = transect_addition_plot(transects, grid_ds, config, lon_range, lat_range)
-    interactive_addition = InteractiveTrasectAddition(fig, ax)
-    interactive_addition.show()
-    add_polygon = shapely.Polygon(list(zip(interactive_addition.lons, interactive_addition.lats)))
-
-    add_transects(add_polygon, interactive_addition.c, grid_ds, config, transects_file)
+    interactive_transect_addition(transects_file, grid_ds, config)
