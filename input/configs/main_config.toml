@@ -11,7 +11,7 @@ angle_tolerance = 45.0 # in degrees, if the angle between two contour lines is l
 max_distance_contours = 100000.0 # in m, max distance at which next contour line is crossed, increasing this decreases accuracy of intersections
 
 # --- for dswt detection ---
-drhodz_depth_percentage = 0.5
+drhodz_depth_percentage = 0.3
 minimum_percentage_consecutive_cells = 0.1
 filter_depth = 100.0
 dswt_cross_shelf_transport_depth_range = [50.0, 60.0]
