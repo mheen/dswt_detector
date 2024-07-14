@@ -57,7 +57,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config):
     
     # remove data for depths above filter_depth_up_to
     if config.filter_depth is not None:
-        # mask (replace with NaNs) all values where depth > filter_depth_up_to:
+        # mask (replace with NaNs) all values where depth > filter_depth:
         transect_ds = transect_ds.where(transect_ds.h < config.filter_depth)
     
     # condition 1: horizontal density gradient (away from coast) must be negative
@@ -96,20 +96,22 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
     transect_names = list(transects.keys())
     
     df_transects_dswt = pd.DataFrame(index=np.arange(0, len(transect_names)),
-                                     columns=['time', 'transect', 'f_dswt', 'vel_dswt', 'transport_dswt', 'lon_transport', 'lat_transport', 'depth_transport'])
+                                     columns=['time', 'transect', 'f_dswt', 'vel_dswt', 'transport_dswt', 'dz_dswt', 'ds', 'lon_transport', 'lat_transport', 'depth_transport'])
     time = pd.to_datetime(roms_ds.ocean_time.values[0]).date()
     row = 0
-    for i, transect_name in enumerate(transect_names):
+    # for i, transect_name in enumerate(transect_names):
+    for i, transect_name in enumerate(['t153']):
         eta = transects[transect_name]['eta']
         xi = transects[transect_name]['xi']
         
         transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
         l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
         
-        dswt_cross_transport, dswt_cross_vel, lon, lat, h = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
+        dswt_cross_transport, dswt_cross_vel, dswt_dz, ds, lon, lat, h = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
         
         for j in range(len(dswt_cross_transport)):
-            df_transects_dswt.loc[row] = [time, transect_name, np.nanmean(l_dswt.astype(int)), dswt_cross_vel[j], dswt_cross_transport[j], lon[j], lat[j], h[j]]
+            df_transects_dswt.loc[row] = [time, transect_name, np.nanmean(l_dswt.astype(int)),
+                                          dswt_cross_vel[j], dswt_cross_transport[j], ds[j], dswt_dz[j], lon[j], lat[j], h[j]]
             row += 1
         
     return df_transects_dswt
@@ -118,7 +120,7 @@ if __name__ == '__main__':
     output_dswt = 'output/cwa_114-116E_33-31S/dswt_2017.csv'
     
     model_input_dir = get_dir_from_json('cwa')
-    files = ['cwa_20170603_03__his.nc', 'cwa_20170101_00__his.nc']
+    files = ['cwa_20170420_03__his.nc']
     grid_file = f'{model_input_dir}grid.nc'
     
     lon_range = [114., 116.]

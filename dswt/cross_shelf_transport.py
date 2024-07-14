@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from scipy.ndimage import gaussian_filter
+from warnings import warn
 
 def get_angle_between_mask_and_velocity(mask:np.ndarray[bool],
                                         u:np.ndarray[float],
@@ -99,13 +100,17 @@ def calculate_dswt_cross_shelf_transport_along_transect(
     l_dswt:np.array,
     config:Config) -> tuple[np.ndarray, np.ndarray]:
 
-    if np.all(l_dswt) == False:
-        return [0.0], [0.0], [np.nan], [np.nan], [np.nan]
+    if np.all(l_dswt == False):
+        return [np.nan], [np.nan], [np.nan], [np.nan], [np.nan], [np.nan], [np.nan]
     
     transect_ds = add_down_transect_velocity_to_ds(transect_ds)
 
     transport = np.empty(len(transect_ds.distance))*np.nan
     mean_vel = np.empty(len(transect_ds.distance))*np.nan
+    mean_dz = np.empty(len(transect_ds.distance))*np.nan
+    sum_dz = np.empty(len(transect_ds.distance))*np.nan
+    sum_vel = np.zeros(len(transect_ds.distance))
+    vel_counts = np.zeros(len(transect_ds.distance))
     
     i_dswt = np.where(l_dswt == True)[0] # times where there is DSWT
 
@@ -124,15 +129,35 @@ def calculate_dswt_cross_shelf_transport_along_transect(
                 continue # drho/dz condition not satisfied at this location along shelf
             
             # calculate transport over all depth layers below first spike in drho/dz
-            k = i_depth[-1]
-            # mean with already existing values at locations
-            transport[j] = np.nanmean([transport[j], np.nansum(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values])
-            mean_vel[j] = np.nanmean([mean_vel[j], np.nanmean(transect_ds.down_transect_vel.values[i, 0:k, j])])
+            if i_depth[-1] == 0:
+                k = 0
+            else:
+                k = i_depth[-1]-1
+            # sum with already existing values at locations
+            if np.all(np.isnan(transect_ds.down_transect_vel.values[i, 0:k, j])):
+                # FIX! there seem to be some grid cells close to land that do not have a velocity but do have other parameters
+                # this probably needs a fix in the conversion of u and v to rho points
+                # I am skipping these cells for now, as these should be limited and only cells close to land
+                continue
+            if np.logical_and(i == 3, j == 8) == True:
+                print('bla')
+            transport[j] = np.nansum([transport[j], np.nansum(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])*transect_ds.dt.values])
+            depth_mean_vel = np.nansum(transect_ds.down_transect_vel.values[i, 0:k, j]*transect_ds.delta_z.values[0:k, j])/np.nansum(transect_ds.delta_z.values[0:k, j])
+            sum_vel[j] = np.nansum([sum_vel[j], depth_mean_vel])
+            vel_counts[j] += 1
+            sum_dz[j] = np.nansum([sum_dz[j], np.nansum(transect_ds.delta_z.values[0:k, j])])
+            
+    mean_vel = sum_vel/vel_counts
+    mean_dz = sum_dz/vel_counts
     
     l_nonzero = np.logical_and(np.logical_and(~np.isnan(transport), transport != 0.0),
-                              np.logical_and(~np.isnan(mean_vel), mean_vel != 0.0))
+                               np.logical_and(~np.isnan(mean_vel), mean_vel != 0.0))
     
-    if np.sum(l_nonzero) == 0:
-        return [0.0], [0.0], [np.nan], [np.nan], [np.nan]
+    if np.sum(l_nonzero) == 0: # you shouldn't really end up here...
+        warn(f'DSWT identified in transect, but no cross-shelf transport found, returning NaNs.')
+        return [np.nan], [np.nan], [np.nan], [np.nan], [np.nan], [np.nan], [np.nan]
     
-    return transport[l_nonzero], mean_vel[l_nonzero], transect_ds.lon_rho.values[l_nonzero], transect_ds.lat_rho.values[l_nonzero], transect_ds.h.values[l_nonzero]
+    return (transport[l_nonzero], mean_vel[l_nonzero], mean_dz[l_nonzero],
+            transect_ds.distance.values[l_nonzero],
+            transect_ds.lon_rho.values[l_nonzero], transect_ds.lat_rho.values[l_nonzero],
+            transect_ds.h.values[l_nonzero])
