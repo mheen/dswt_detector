@@ -30,52 +30,43 @@ def get_input_paths(input_dir:str, path_str:str, years:list) -> list[str]:
         
     return input_paths
 
-def get_monthly_transport_maps(input_path:str,
-                               lon:np.ndarray[float], lat:np.ndarray[float]) -> tuple[np.ndarray[datetime],
-                                                                                       np.ndarray[float], np.ndarray[float],
-                                                                                       np.ndarray[float]]:
+def get_daily_velocity_and_transport_maps(input_path:str,
+                                          lon:np.ndarray[float],
+                                          lat:np.ndarray[float])-> tuple[np.ndarray[datetime],
+                                                                 np.ndarray[float], np.ndarray[float],
+                                                                 np.ndarray[float]]:
     df = pd.read_csv(input_path)
-    time = [datetime.strptime(t, '%Y-%m-%d') for t in df['time'].values]
-    year = np.unique([t.year for t in time])[0]
-    months = np.unique([t.month for t in time])
+    time = pd.unique(df['time']) # unique days
+
+    velocity_dswt = np.zeros((len(time), lon.shape[0], lon.shape[1]))
+    transport_dswt = np.zeros((len(time), lon.shape[0], lon.shape[1]))
+    count = np.zeros(lon.shape)
     
-    time_months = []
-    transport_dswt = np.zeros((len(months), lon.shape[0], lon.shape[1]))
-    transport_count = np.zeros(lon.shape)
-    
-    for i, month in enumerate(months):
-        time_months.append(datetime(year, month, 15))
-        df_month = df[[t.month == month for t in time]]
-        lon_t = df_month['lon_transport'].values
-        lat_t = df_month['lat_transport'].values
-        t_dswt = df_month['transport_dswt']
+    for i, t in enumerate(time):
+        df_day = df[df['time'] == t]
+        lon_t = df_day['lon_transport'].values
+        lat_t = df_day['lat_transport'].values
+        v_dswt = df_day['vel_dswt']
+        t_dswt = df_day['transport_dswt']
         
         l_nonan = np.logical_and(~np.isnan(lon_t), ~np.isnan(lat_t))
         if sum(l_nonan) == 0:
             continue
         
         eta, xi = get_eta_xi_of_lon_lat_point(lon, lat, lon_t[l_nonan], lat_t[l_nonan])
+        velocity_dswt[i, eta, xi] += v_dswt[l_nonan]
         transport_dswt[i, eta, xi] += t_dswt[l_nonan]
-        transport_count[eta, xi] += 1
-        transport_dswt[i, :, :] = transport_dswt[i, :, :]/transport_count
+        count[eta, xi] += 1
         
+        velocity_dswt[i, :, :] = velocity_dswt[i, :, :]/count # CHECK: does this go right? 2/0 = inf, 0/0 = nan
+        transport_dswt[i, :, :] = transport_dswt[i, :, :]/count
+        
+    velocity_dswt[velocity_dswt == 0] = np.nan
     transport_dswt[transport_dswt == 0] = np.nan
-        
-    return np.array(time_months), lon, lat, transport_dswt
-
-def read_multifile_transport_maps(input_dir:str, years:list,
-                                  lon:np.ndarray, lat:np.ndarray) -> tuple[np.ndarray[datetime], np.ndarray[float],
-                                                                           np.ndarray[float], np.ndarray[float]]:
-    input_paths = get_input_paths(input_dir, 'dswt', years)
-    time = np.array([])
-    transport_dswt = np.array([]).reshape(0, lon.shape[0], lon.shape[1])
     
-    for input_path in input_paths:
-        time_y, _, _, transport_y = get_monthly_transport_maps(input_path, lon, lat)
-        time = np.concatenate((time, time_y))
-        transport_dswt = np.concatenate((transport_dswt, transport_y), axis=0)
+    time = np.array([datetime.strptime(t, '%Y-%m-%d') for t in time])
         
-    return time, lon, lat, transport_dswt
+    return time, lon, lat, velocity_dswt, transport_dswt
 
 def read_multifile_timeseries(input_dir:str, years:list) -> tuple[np.ndarray[datetime], np.ndarray[float],
                                                                   np.ndarray[float], np.ndarray[float]]:
@@ -142,10 +133,3 @@ def get_yearly_atmosphere_data(time:np.ndarray, y1:np.ndarray, y2:np.ndarray) ->
     time_y, y1_y = get_yearly_means(time, y1)
     _, y2_y = get_yearly_means(time, y2)
     return time_y, y1_y, y2_y
-
-if __name__ == '__main__':
-    model_input_dir = get_dir_from_json('cwa')
-    grid_file = f'{model_input_dir}grid.nc'
-    grid_ds = xr.open_dataset(grid_file)
-    
-    time, lon, lat, transport = get_monthly_transport_maps('output/test.csv', grid_ds.lon_rho.values, grid_ds.lat_rho.values)

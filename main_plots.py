@@ -1,4 +1,5 @@
-from tools.dswt_output import get_domain_str, get_monthly_dswt_values, get_yearly_dswt_values, read_multifile_timeseries, read_multifile_transport_maps
+from tools.dswt_output import get_domain_str, get_monthly_dswt_values, get_yearly_dswt_values, read_multifile_timeseries
+from tools.dswt_output import get_daily_velocity_and_transport_maps
 from tools.dswt_output import get_sflux_data, get_wind_data, get_monthly_atmosphere_data, get_yearly_atmosphere_data
 from tools.dswt_output import get_monthly_yearly_mei_data
 from tools.files import get_dir_from_json
@@ -25,7 +26,8 @@ plot_interannual_variation = False
 plot_specific_years = False
 plot_maps_specific_years = True
 
-years = np.arange(2000, 2023)
+# years = np.arange(2000, 2023)
+years = [2017]
 
 model = 'cwa'
 lon_range = [114.0, 116.0]
@@ -294,31 +296,56 @@ if plot_maps_specific_years == True:
     grid_file = f'{model_input_dir}grid.nc'
     grid_ds = xr.open_dataset(grid_file)
     
-    time, lon, lat, transport_dswt = read_multifile_transport_maps(main_input_dir, years,
-                                                                   grid_ds.lon_rho.values,
-                                                                   grid_ds.lat_rho.values)
+    def _plot_dswt_map(ax:plt.axes, lon, lat, h, z,
+                       cbar_loc, cmap, vmin, vmax, clabel, subtitle):
+        if cbar_loc == 'left':
+            ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels, ymarkers='left')
+        else:
+            ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
+        ax = plot_contours(lon, lat, h,
+                           lon_range=lon_range, lat_range=lat_range,
+                           clevels=[25, 50, 100, 200],
+                           ax=ax, show=False)
+        
+        c = ax.pcolormesh(lon, lat, z, cmap=cmap, vmin=vmin, vmax=vmax)
+        
+        ax = add_subtitle(ax, subtitle)
+        
+        # colorbar
+        l, b, w, h = ax.get_position().bounds
+        if cbar_loc == 'right':
+            cbax = fig.add_axes([l+w+0.02, b, 0.03, h])
+            cbar = plt.colorbar(c, cax=cbax)
+            cbar.set_label(clabel)
+        else:
+            cbax = fig.add_axes([l-0.05, b, 0.03, h])
+            cbar = plt.colorbar(c, cax=cbax)
+            cbar.set_label(clabel)
+            cbax.yaxis.set_label_position('left')
+            cbax.yaxis.set_ticks_position('left')
+
+        return ax, cbar
     
     for year in years:
         
-        l_time = get_l_time_range(time, datetime(year, 1, 1), datetime(year, 12, 31))
-        transport_yearly = np.nanmean(transport_dswt[l_time, :, :], axis=0)
+        time, lon, lat, velocity_dswt, transport_dswt = get_daily_velocity_and_transport_maps(f'{main_input_dir}dswt_{year}.csv', grid_ds.lon_rho.values, grid_ds.lat_rho.values)
         
-        fig = plt.figure(figsize=(6, 8))
-        ax = plt.axes(projection=ccrs.PlateCarree())
-        ax = plot_basic_map(ax, lon_range, lat_range, meridians, parallels)
-        ax = plot_contours(ds_grid.lon_rho.values, ds_grid.lat_rho.values, ds_grid.h.values,
-                           lon_range=lon_range, lat_range=lat_range,
-                           clevels=[10, 50, 100, 200],
-                           ax=ax, show=False)
+        transport_yearly = np.nansum(transport_dswt, axis=0)*10**(-6) # Sv/m per year
+        velocity_yearly = np.nanmean(velocity_dswt, axis=0)
         
-        c = ax.pcolormesh(lon, lat, transport_yearly, cmap='RdYlBu_r', vmin=5000, vmax=-5000)
+        fig = plt.figure(figsize=(10, 6))
+        plt.subplots_adjust(wspace=0.2)
         
-        l, b, w, h = ax.get_position().bounds
-        cbax = fig.add_axes([l+w+0.02, b, 0.03, h])
-        cbar = plt.colorbar(c, cax=cbax)
-        cbar.set_label('DSWT transport (m$^2$)')
-        ax = add_subtitle(ax, f'Yearly mean DSWT transport', location='upper left')
-        ax.set_title(year)
+        ax1 = plt.subplot(1, 2, 1, projection=ccrs.PlateCarree())
+        _plot_dswt_map(ax1, lon, lat, grid_ds.h.values, velocity_yearly,
+                       'left', 'RdYlBu_r', -0.1, 0.1,
+                       'Velocity (m/s)', f'(a) {year} mean DSWT velocity')
+        ax1.set_yticklabels([])
+        
+        ax2 = plt.subplot(1, 2, 2, projection=ccrs.PlateCarree())
+        _plot_dswt_map(ax2, lon, lat, grid_ds.h.values, transport_yearly,
+                       'right', 'RdYlBu_r', -1, 1,
+                       'Transport (Sv/m)', f'(b) {year} total DSWT transport')
         
         plt.savefig(f'plots/dswt_map_{year}.jpg', bbox_inches='tight', dpi=300)
         plt.close()
