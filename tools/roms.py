@@ -113,7 +113,7 @@ def get_distance_along_transect(lons:np.ndarray, lats:np.ndarray):
     
     return np.cumsum(distance) # distance in meters
 
-def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndarray) -> tuple:
+def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndarray, mask:np.ndarray) -> tuple:
     '''Convert u and v from curvilinear ROMS output to u eastwards and v northwards.
     This is done by:
     1. Converting u and v so that they are on rho-coordinate point (cell center).
@@ -148,13 +148,13 @@ def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndar
             S = var_u_size[1]
             M = var_u_size[-2]
             L = var_u_size[-1]
-            var_rho = np.empty((T, S, M, L+1))*np.nan
+            var_rho = np.zeros((T, S, M, L+1)) # zeros because summing with a NaN value will give NaN
             var_rho[:, :, :, 1:L] = 0.5*(var_u[:, :, :, 0:-1]+var_u[:, :, :, 1:]) # averages in middle of grid
             var_rho[:, :, :, 0] = var_u[:, :, :, 0] # single right value for first rho-point
             var_rho[:, :, :, -1] = var_u[:, :, :, -1] # single left value for last rho-point
         else:
             raise ValueError('Conversion from u- to rho-coordinate only implemented for 4D variables.')
-            
+        
         return var_rho
 
     def v2rho(var_v:np.ndarray) -> np.ndarray:
@@ -166,7 +166,7 @@ def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndar
             S = var_v_size[1]
             M = var_v_size[-2]
             L = var_v_size[-1]
-            var_rho = np.empty((T, S, M+1, L))*np.nan
+            var_rho = np.zeros((T, S, M+1, L)) # zeros because summing with a NaN value will give NaN
             var_rho[:, :, 1:M, :] = 0.5*(var_v[:, :, 0:-1, :]+var_v[:, :, 1:, :]) # averages in middle of grid
             var_rho[:, :, 0, :] = var_v[:, :, 0, :] # single bottom value for first rho-point
             var_rho[:, :, -1, :] = var_v[:, :, -1, :] # single top value for last rho-point
@@ -182,5 +182,10 @@ def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndar
     u_rho = u2rho(u)
     v_rho = v2rho(v)
     u_east, v_north = rotate_u_v(u_rho, v_rho, angle)
+    
+    # set velocities to NaN on land
+    l_land = mask == 0
+    u_east[:, :, l_land] = np.nan
+    v_north[:, :, l_land] = np.nan
 
     return u_east, v_north

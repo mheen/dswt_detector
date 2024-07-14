@@ -69,7 +69,7 @@ def read_roms_data(input_paths:str, grid_file:str, drop_vars:list) -> xr.Dataset
 def convert_roms_u_and_v(roms_ds:xr.Dataset) -> xr.Dataset:
     # convert u and v to u_east and v_north
     if 'u_eastward' not in roms_ds.variables:
-        u_eastward, v_northward = convert_roms_u_v_to_u_east_v_north(roms_ds.u.values, roms_ds.v.values, roms_ds.angle.values)
+        u_eastward, v_northward = convert_roms_u_v_to_u_east_v_north(roms_ds.u.values, roms_ds.v.values, roms_ds.angle.values, roms_ds.mask_rho.values)
         roms_ds['u_eastward'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], u_eastward)
         roms_ds['v_northward'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], v_northward)
         
