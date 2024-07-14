@@ -130,55 +130,55 @@ def plot_dswt_detection(date:datetime, transect_to_plot:int, time_to_plot:int, c
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close()
 
-def plot_dswt_cross_shelf_transport(transect_ds:xr.Dataset,
-                               i_time:int,
-                               i_dists:list[int],
-                               i_depths:list[int],
-                               transport:float,
-                               velocity:float,
-                               title='',
-                               output_path=None,
-                               show=True):
+def plot_dswt_cross_shelf_transport(mean_transect_ds:xr.Dataset,
+                                    transport:list[float],
+                                    velocity:list[float],
+                                    dz:list[float],
+                                    ds:list[float],
+                                    h:list[float],
+                                    title='',
+                                    output_path=None,
+                                    show=True):
     
-    def _plot_detection_boxes(ax:plt.axes, i, i_depth):
-        dist = transect_ds.distance[i]
-        dx = np.diff(transect_ds.distance.values)[0]
-        x = [dist-dx, dist+dx, dist+dx, dist-dx, dist-dx]
-        depth0 = transect_ds.z_rho[0, i]
-        depth1 = transect_ds.z_rho[i_depth, i]
+    def _plot_detection_boxes(ax:plt.axes, i):
+        # distances are not even: taking mean as approximation
+        dx = np.nanmean(np.diff(transect_ds.distance.values))
+        x = [ds[i]-dx, ds[i]+dx, ds[i]+dx, ds[i]-dx, ds[i]-dx]
+        depth0 = -h[i]
+        depth1 = -h[i]+dz[i]
         y = [depth0, depth0, depth1, depth1, depth0]
         ax.plot(x, y, '-r', linewidth=2)
 
     fig = plt.figure(figsize=(8, 12))
     ax1 = plt.subplot(3, 1, 1)
-    ax1, c1 = plot_transect(ax1, transect_ds, 'density', i_time, 1024.8, 1025.4, cmap_density)
+    ax1, c1 = plot_transect(ax1, mean_transect_ds, 'density', 0, 1024.8, 1025.4, cmap_density)
     cbar1 = plt.colorbar(c1)
     cbar1.set_label('Density (kg/m$^3$)')
-    ax1 = plot_vertical_lines_in_transect(ax1, transect_ds, 'vertical_density_gradient', i_time, 0.03)
-    for i in range(len(i_dists)):
-        _plot_detection_boxes(ax1, i_dists[i], i_depths[i])
+    ax1 = plot_vertical_lines_in_transect(ax1, mean_transect_ds, 'vertical_density_gradient', 0, 0.03)
+    for i in range(len(ds)):
+        _plot_detection_boxes(ax1, i)
         
     ax1 = add_subtitle(ax1, '(a) Density along transect', location='lower left')
 
     ax2 = plt.subplot(3, 1, 2)
-    ax2, c2 = plot_transect(ax2, transect_ds, 'vertical_density_gradient', i_time, 0, 0.03, 'bone_r')
+    ax2, c2 = plot_transect(ax2, mean_transect_ds, 'vertical_density_gradient', 0, 0, 0.03, 'bone_r')
     cbar2 = plt.colorbar(c2)
     cbar2.set_label('Vertical density gradient')
-    ax2 = plot_vertical_lines_in_transect(ax2, transect_ds, 'vertical_density_gradient', i_time, 0.03, color='#808080')
-    for i in range(len(i_dists)):
-        _plot_detection_boxes(ax2, i_dists[i], i_depths[i])
+    ax2 = plot_vertical_lines_in_transect(ax2, mean_transect_ds, 'vertical_density_gradient', 0, 0.03, color='#808080')
+    for i in range(len(ds)):
+        _plot_detection_boxes(ax2, i)
         
     ax2 = add_subtitle(ax2, '(b) Vertical density gradient along transect', location='lower left')
 
     ax3 = plt.subplot(3, 1, 3)
-    ax3, c3 = plot_transect(ax3, transect_ds, 'down_transect_vel', i_time, -0.2, 0.2, 'RdYlBu_r')
+    ax3, c3 = plot_transect(ax3, mean_transect_ds, 'down_transect_vel', 0, -0.2, 0.2, 'RdYlBu_r')
     cbar3 = plt.colorbar(c3)
     cbar3.set_label('Down-transect velocity')
-    ax3 = plot_vertical_lines_in_transect(ax3, transect_ds, 'vertical_density_gradient', i_time, 0.03)
-    for i in range(len(i_dists)):
-        _plot_detection_boxes(ax3, i_dists[i], i_depths[i])
+    ax3 = plot_vertical_lines_in_transect(ax3, mean_transect_ds, 'vertical_density_gradient', 0, 0.03)
+    for i in range(len(ds)):
+        _plot_detection_boxes(ax3, i)
         
-    cross_text = f'Mean velocity {np.round(velocity, 2)} m/s, total transport: {np.round(transport, 0).astype(int)} m$^2$'
+    cross_text = f'Mean velocity {np.round(np.nanmean(velocity), 2)} m/s, total transport: {np.round(np.nansum(transport), 0).astype(int)} m$^2$/day'
     ax3 = add_subtitle(ax3, f'(c) Cross-shelf velocity along transect\n    {cross_text}',
                        location='lower left')
 
@@ -223,9 +223,8 @@ if __name__ == '__main__':
         # dates = [datetime(2017, 5, 14), datetime(2017, 8, 19), datetime(2017, 8, 18)]
         # transects_to_plot = ['t135', 't268', 't200']
         # time_to_plot = [3, 5, 6]
-        dates = [datetime(2017, 6, 3)]
-        transects_to_plot = ['t129']
-        time_to_plot = [0]
+        dates = [datetime(2017, 4, 20)]
+        transects_to_plot = ['t153']
         
         config = read_config('cwa')
         
@@ -240,18 +239,12 @@ if __name__ == '__main__':
             transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
             transect_ds = add_down_transect_velocity_to_ds(transect_ds)
             l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
-            cross_transport, cross_vel, lon, lat, h = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
+            cross_transport, cross_vel, dz, ds, _, _, h = calculate_dswt_cross_shelf_transport_along_transect(transect_ds, l_dswt, config)
             
-            n_z_layers = len(transect_ds.z_rho)
-            n_depth_layers = int(np.ceil(n_z_layers*config.drhodz_depth_percentage)) # depth layers to consider for DSWT
-            i_dists = np.unique(np.where(transect_ds.vertical_density_gradient[time_to_plot[i], 0:n_depth_layers, :] >= config.minimum_drhodz)[1]) # locations with DSWT
-            i_depths = []
-            for j in i_dists:
-                i_depths.append(np.where(transect_ds.vertical_density_gradient[time_to_plot[i], 0:n_depth_layers, j] >= config.minimum_drhodz)[0][-1])
-            
-            time_str = f'{pd.to_datetime(transect_ds.ocean_time.values[time_to_plot[i]]).strftime("%d-%m-%Y %H:%M")}'
+            time_str = f'{pd.to_datetime(transect_ds.ocean_time.values[0]).strftime("%d-%m-%Y")}'
             title = f'DSWT cross-shelf transport: {transects_to_plot[i]}, {time_str}'
             
-            plot_dswt_cross_shelf_transport(transect_ds, time_to_plot[i], i_dists, i_depths,
-                                            cross_transport[time_to_plot[i]], cross_vel[time_to_plot[i]],
+            mean_transect_ds = transect_ds.isel(ocean_time=l_dswt).mean(dim='ocean_time', keepdims=True) # mean over times with DSWT
+            
+            plot_dswt_cross_shelf_transport(transect_ds, cross_transport, cross_vel, dz, ds, h,
                                             title=title, output_path=output_path, show=False)
