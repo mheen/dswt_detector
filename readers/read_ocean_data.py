@@ -44,14 +44,21 @@ def read_roms_data(input_paths:str, grid_file:str, drop_vars:list) -> xr.Dataset
     roms_ds['dt'] = dt
     
     # read grid variables if in separate file
-    if 'lon_rho' not in roms_ds.variables:
+    grid_variables = ['lon_rho', 'lat_rho', 'h', 'angle', 'Vtransform', 'Cs_r', 'Cs_w', 'hc', 'mask_rho']
+    in_ds = [v in roms_ds.variables for v in grid_variables]
+    if all(in_ds) is False:
         if grid_file is None:
             raise ValueError(f'No grid variables in ROMS files, expecting a separate grid file.')
         rg = xr.load_dataset(grid_file)
-        roms_ds.coords['lon_rho'] = rg.lon_rho
-        roms_ds.coords['lat_rho'] = rg.lat_rho
-        roms_ds['h'] = rg.h
-        roms_ds['angle'] = rg.angle
+        
+        if 'lon_rho' not in roms_ds.variables:
+            roms_ds.coords['lon_rho'] = rg.lon_rho
+        if 'lat_rho' not in roms_ds.variables:
+            roms_ds.coords['lat_rho'] = rg.lat_rho
+        if 'h' not in roms_ds.variables:
+            roms_ds['h'] = rg.h
+        if 'angle' not in roms_ds.variables:
+            roms_ds['angle'] = rg.angle
         
         if 'Vtransform' not in roms_ds.variables:
             roms_ds['Vtransform'] = rg.Vtransform
