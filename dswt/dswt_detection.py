@@ -96,11 +96,10 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
     transect_names = list(transects.keys())
     
     df_transects_dswt = pd.DataFrame(index=np.arange(0, len(transect_names)),
-                                     columns=['time', 'transect', 'f_dswt', 'vel_dswt', 'transport_dswt', 'dz_dswt', 'ds', 'lon_transport', 'lat_transport', 'depth_transport'])
+                                     columns=['time', 'transect', 'f_dswt', 'vel_dswt', 'transport_dswt', 'ds', 'dz_dswt', 'lon_transport', 'lat_transport', 'depth_transport'])
     time = pd.to_datetime(roms_ds.ocean_time.values[0]).date()
     row = 0
-    # for i, transect_name in enumerate(transect_names):
-    for i, transect_name in enumerate(['t153']):
+    for i, transect_name in enumerate(transect_names):
         eta = transects[transect_name]['eta']
         xi = transects[transect_name]['xi']
         
