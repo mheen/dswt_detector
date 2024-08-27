@@ -3,8 +3,8 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from plot_tools.dswt import transects_plot
-from readers.read_ocean_data import select_input_files, load_roms_data
-from transects import get_transects_in_lon_lat_range, get_specific_transect_data
+from readers.read_ocean_data import select_input_files, load_roms_data, select_roms_transect_from_known_coordinates
+from transects import read_transects_in_lon_lat_range_from_json
 from tools.files import get_dir_from_json
 from tools import log
 import matplotlib.pyplot as plt
@@ -22,12 +22,12 @@ grid_file = f'{get_dir_from_json("cwa")}grid.nc'
 # --- Calculate total number of transects for model year
 input_dir = f'{get_dir_from_json("cwa")}{year}/'
 files_contain = f'{model}_'
-input_files = select_input_files(input_dir, file_contains=files_contain)
+input_files = select_input_files(input_dir, file_preface=files_contain)
 
 lon_range = [114.0, 116.0]
 lat_range = [-33.0, -31.0]
 transects_file = f'input/transects/{model}_transects.json'
-transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
+transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
 
 n_files = len(input_files)
 n_transects = len(transects)
@@ -77,14 +77,16 @@ if recheck_differences == True:
         filename = df_diff["filename"].values[i]
         input_path = f'{input_dir}{filename}.nc'
         time_str = str(df_diff['time'].values[i])
-        transect = df_diff['transect'].values[i]
+        transect_name = df_diff['transect'].values[i]
 
         roms_ds = load_roms_data(input_path, grid_file=grid_file)
         roms_times = pd.to_datetime(roms_ds.ocean_time.values)
         time = datetime.strptime(time_str, '%Y%m%d%H%M')
         t = np.where(roms_times == time)[0][0]
         
-        transect_ds = get_specific_transect_data(roms_ds, transects, transect)
+        eta = transects[transect_name]['eta']
+        xi = transects[transect_name]['xi']
+        transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
         fig = plt.figure(figsize=(6, 8))
         fig = transects_plot(transect_ds, t, fig, 3, 2, 1, set_vlim=False)
         plt.show()
@@ -92,7 +94,7 @@ if recheck_differences == True:
         manual_input_str = input('DSWT True/False (t/f): ')
         manual_input = True if manual_input_str.lower().startswith('t') else False
         if manual_input != df_diff['manual_dswt'].values[i]:
-            l_row = np.logical_and(df['filename'] == filename, df['transect'] == transect)
+            l_row = np.logical_and(df['filename'] == filename, df['transect'] == transect_name)
             l_col = df.columns == 'manual_dswt'
             df.loc[l_row, l_col] = manual_input
             changes += 1

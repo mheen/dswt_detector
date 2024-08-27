@@ -3,8 +3,9 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
-from readers.read_ocean_data import load_roms_data, select_input_files
-from transects import get_transects_dict_from_json, get_transects_in_lon_lat_range, get_specific_transect_data
+from tools.config import read_config
+from readers.read_ocean_data import load_roms_data, select_input_files, select_roms_transect_from_known_coordinates
+from transects import read_transects_in_lon_lat_range_from_json
 from dswt.dswt_detection import determine_dswt_along_transect
 from plot_tools.dswt import transects_plot
 from tools import log
@@ -30,9 +31,9 @@ focus_months = [5, 6, 7] # set to None for full year,
 # allowing this option to focus more on DSWT times
 # rather than confirming obvious False values
 
-input_dir = f'{get_dir_from_json("cwa-roms")}{year}/'
+input_dir = f'{get_dir_from_json("cwa")}{year}/'
 files_contain = f'{model}_'
-grid_file = f'{get_dir_from_json("cwa-roms")}grid.nc'
+grid_file = f'{get_dir_from_json("cwa")}grid.nc'
 
 transects_file = f'input/transects/{model}_transects.json'
 
@@ -44,8 +45,10 @@ output_file = f'performance_tests/output/{model}_{year}_performance_comparison.c
 # --------------------------------------------------------
 # Randomly select file and transect and get user DSWT
 # --------------------------------------------------------
-transects = get_transects_in_lon_lat_range(transects_file, lon_range, lat_range)
+transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
 transect_names = list(transects.keys())
+
+config = read_config(model)
 
 if focus_months is not None:
     input_files = []
@@ -53,7 +56,7 @@ if focus_months is not None:
         m_str = str(m).zfill(2)
         input_files = input_files + glob.glob(f'{input_dir}*{files_contain}*{year}{m_str}*.nc')
 else:
-    input_files = select_input_files(input_dir, file_contains=files_contain)
+    input_files = select_input_files(input_dir, file_preface=files_contain)
 
 for i in range(n_files_to_check):
     input_path = random.choice(input_files)
@@ -84,7 +87,9 @@ for i in range(n_files_to_check):
                     while transect_name in df_file['transect'].values:
                         transect_name = random.choice(transect_names)
 
-            transect_ds = get_specific_transect_data(roms_ds, transects, transect_name)
+            eta = transects[transect_name]['eta']
+            xi = transects[transect_name]['xi']
+            transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
 
             fig = plt.figure(figsize=(6, 8))
             fig = transects_plot(transect_ds, t, fig, 3, 2, 1, set_vlim=False)
@@ -92,7 +97,7 @@ for i in range(n_files_to_check):
             
             manual_input = input('DSWT True/False (t/f): ')
             manual_dswt = True if manual_input.lower().startswith('t') else False
-            l_dswt, condition1, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds)
+            l_dswt, condition1, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds, config)
             
             data = np.array([filename, time, transect_name, manual_dswt, l_dswt[t],
                              condition1[t], condition2[t], drhodz_max[t], drhodz_cells[t]])
