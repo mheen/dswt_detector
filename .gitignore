@@ -3,6 +3,7 @@
 *.csv
 *.sh
 *.jpg
+*.gif
 
 !input/plot_settings.json
 !input/transects/*_transects.json

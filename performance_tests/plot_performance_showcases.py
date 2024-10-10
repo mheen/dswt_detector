@@ -52,7 +52,8 @@ land_color = '#d2d2d2'
 def plot_dswt_detection(date:datetime, transect_to_plot:int, time_to_plot:int, config:Config,
                         output_path=None):  
     # -- Load ROMS data
-    input_path = f'{input_dir}cwa_{date.strftime("%Y%m%d")}_03__his.nc'
+    input_file = [p for p in os.listdir(input_dir) if dates[i].strftime("%Y%m%d") in p][0]
+    input_path = f'{input_dir}{input_file}'
     roms_ds = load_roms_data(input_path, grid_file=grid_file)
     
     eta = transects[transect_to_plot]['eta']
@@ -200,15 +201,18 @@ if __name__ == '__main__':
         # ------------------------------------------------------
         # DSWT detection examples
         # ------------------------------------------------------
-        dates = [datetime(2017, 1, 15), # no DSWT: positive drhodx
-                datetime(2017, 2, 22), # no DSWT: negative drhodx because of higher salinity along coast, but vertically mixed water column
-                datetime(2017, 6, 11), # DSWT
-                datetime(2017, 9, 8), # manual DSWT, algorithm no DSWT (because not enough consecutive cells)
-                datetime(2017, 5, 21),  # manual no DSWT, algorithm DSWT
-                datetime(2017, 8, 19),
-                datetime(2017, 8, 18)]
-        transects_to_plot = ['t201', 't197', 't171', 't209', 't188', 't268', 't200']
-        time_to_plot = [0, 0, 6, 0, 5, 0, 3]
+        # dates = [datetime(2017, 1, 15), # no DSWT: positive drhodx
+        #         datetime(2017, 2, 22), # no DSWT: negative drhodx because of higher salinity along coast, but vertically mixed water column
+        #         datetime(2017, 6, 11), # DSWT
+        #         datetime(2017, 9, 8), # manual DSWT, algorithm no DSWT (because not enough consecutive cells)
+        #         datetime(2017, 5, 21),  # manual no DSWT, algorithm DSWT
+        #         datetime(2017, 8, 19),
+        #         datetime(2017, 8, 18)]
+        # transects_to_plot = ['t201', 't197', 't171', 't209', 't188', 't268', 't200']
+        # time_to_plot = [0, 0, 6, 0, 5, 0, 3]
+        dates = [datetime(2017, 1, 1)]
+        transects_to_plot = ['t222']
+        time_to_plot = [0]
 
         config = read_config('cwa')
 
@@ -223,15 +227,18 @@ if __name__ == '__main__':
         # dates = [datetime(2017, 5, 14), datetime(2017, 8, 19), datetime(2017, 8, 18)]
         # transects_to_plot = ['t135', 't268', 't200']
         # time_to_plot = [3, 5, 6]
-        dates = [datetime(2017, 4, 20)]
-        transects_to_plot = ['t153']
+        # dates = [datetime(2017, 2, 12)]
+        # transects_to_plot = ['t1193']
+        dates = [datetime(2017, 1, 1)]
+        transects_to_plot = ['t222']
         
         config = read_config('cwa')
         
         for i in range(len(dates)):
             output_path = f'{output_dir}cwa_cross-transport_{dates[i].strftime("%Y%m%d")}_{transects_to_plot[i]}.jpg'
             # -- Load ROMS data
-            input_path = f'{input_dir}cwa_{dates[i].strftime("%Y%m%d")}_03__his.nc'
+            input_file = [p for p in os.listdir(input_dir) if dates[i].strftime("%Y%m%d") in p][0]
+            input_path = f'{input_dir}{input_file}'
             roms_ds = load_roms_data(input_path, grid_file=grid_file)
             
             eta = transects[transects_to_plot[i]]['eta']
