@@ -16,12 +16,15 @@ g = 9.81 # m/s2
 
 def select_input_files(input_dir:str, file_preface=None,
                        date_range=None, dateformat='%Y%m%d',
-                       remove_gridfile=True, filetype='nc') -> list[str]:
+                       remove_gridfile=True, filetype='nc', file_contains=None) -> list[str]:
     all_files = get_files_in_dir(input_dir, filetype, return_full_path=False)
     if file_preface is not None:
         files = [f for f in all_files if f.startswith(file_preface)]
     else:
         files = all_files
+        
+    if file_contains is not None:
+        files = [f for f in files if file_contains in f]
         
     if remove_gridfile is True:
         grid_files = [f for f in files if 'grid' in f]
@@ -133,7 +136,7 @@ def load_roms_data(input_path:str, grid_file=None, drop_vars=None) -> xr.Dataset
 
 def load_mf_roms_data(input_dir:str, grid_file=None, files_contain=None, drop_vars=None) -> xr.Dataset:
     input_paths = select_input_files(input_dir, file_contains=files_contain)
-    roms_ds = read_roms_data(input_paths, grid_file, files_contain, drop_vars=drop_vars)
+    roms_ds = read_roms_data(input_paths, grid_file, drop_vars)
     roms_ds = convert_roms_u_and_v(roms_ds)
     roms_ds = add_variables_to_roms_data(roms_ds)
 
