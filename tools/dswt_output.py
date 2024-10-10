@@ -2,9 +2,6 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
-from readers.read_climate_indices import read_mei_data
-from readers.surface_fluxes import read_surface_fluxes_from_csvs
-from readers.read_meteo_data import read_wind_from_csvs
 from tools.timeseries import get_monthly_means, get_monthly_sums, get_yearly_means, get_yearly_sums
 from tools.roms import get_eta_xi_of_lon_lat_point
 from tools.files import get_dir_from_json
@@ -23,10 +20,10 @@ def get_domain_str(lon_range:list, lat_range:list) -> str:
     
     return domain
 
-def get_input_paths(input_dir:str, path_str:str, years:list) -> list[str]:
+def get_input_paths(input_dir:str, years:list) -> list[str]:
     input_paths = []
     for i in range(len(years)):
-        input_paths.append(f'{input_dir}{path_str}_{years[i]}.csv')
+        input_paths.append(f'{input_dir}dswt_{years[i]}.csv')
         
     return input_paths
 
@@ -70,7 +67,7 @@ def get_daily_velocity_and_transport_maps(input_path:str,
 
 def read_multifile_timeseries(input_dir:str, years:list) -> tuple[np.ndarray[datetime], np.ndarray[float],
                                                                   np.ndarray[float], np.ndarray[float]]:
-    input_paths = get_input_paths(input_dir, 'dswt', years)
+    input_paths = get_input_paths(input_dir, years)
     time = np.array([])
     f_dswt = np.array([])
     vel_dswt = np.array([])
@@ -106,30 +103,3 @@ def get_yearly_dswt_values(time:np.ndarray,
     _, transport_dswt_y = get_yearly_sums(time, transport_dswt)
     
     return time_y, f_dswt_y, vel_dswt_y, transport_dswt_y
-
-def get_monthly_yearly_mei_data(years:list):
-    year_range = [years[0], years[-1]]
-    time, mei = read_mei_data(year_range=year_range)
-    time_y, mei_y = get_yearly_means(time, mei)
-    return time, mei, time_y, mei_y
-
-def get_sflux_data(input_dir:str, years:list, path_str='sflux') -> tuple:
-    input_paths = get_input_paths(input_dir, path_str, years)
-    time, shflux, ssflux = read_surface_fluxes_from_csvs(input_paths)
-    
-    return time, shflux, ssflux
-
-def get_wind_data(input_dir:str, years:list, path_str='wind') -> tuple:
-    input_paths = get_input_paths(input_dir, path_str, years)
-    time, u, v, vel, dir = read_wind_from_csvs(input_paths)
-    return time, u, v, vel, dir
-
-def get_monthly_atmosphere_data(time:np.ndarray, y1:np.ndarray, y2:np.ndarray) -> tuple:
-    time_m, y1_m = get_monthly_means(time, y1)
-    _, y2_m = get_monthly_means(time, y2)
-    return time_m, y1_m, y2_m
-
-def get_yearly_atmosphere_data(time:np.ndarray, y1:np.ndarray, y2:np.ndarray) -> tuple:
-    time_y, y1_y = get_yearly_means(time, y1)
-    _, y2_y = get_yearly_means(time, y2)
-    return time_y, y1_y, y2_y

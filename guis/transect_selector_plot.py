@@ -3,14 +3,14 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from plot_tools.interactive_tools import plot_cycler
-from readers.read_ocean_data import select_roms_transect
+from readers.read_ocean_data import select_roms_transect_from_known_coordinates
 from tools.roms import get_eta_xi_along_transect
 from dswt.dswt_detection import determine_dswt_along_transect
 
 from tools.config import read_config, Config
 from readers.read_ocean_data import load_roms_data
 from tools.files import get_dir_from_json
-from transects import get_transects_in_lon_lat_range
+from transects import read_transects_in_lon_lat_range_from_json
 
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -21,28 +21,24 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
+lon_range_default = [114.5, 116.]
+lat_range_default = [-33.0, -31.0]
+
 def select_transects_to_plot(transects:dict, transect_interval:int,
-                             lon_rho:np.ndarray, lat_rho:np.ndarray,
-                             transect_ds=500.) -> list[dict]:
+                             lon_rho:np.ndarray, lat_rho:np.ndarray) -> list[dict]:
     
     transect_names = list(transects.keys())
     
     transects_to_plot = []
     for i in np.arange(0, len(transect_names), transect_interval):
-        lon_land = transects[transect_names[i]]['lon_land']
-        lat_land = transects[transect_names[i]]['lat_land']
-        lon_ocean = transects[transect_names[i]]['lon_ocean']
-        lat_ocean = transects[transect_names[i]]['lat_ocean']
+        lon_org = transects[transect_names[i]]['lon_org']
+        lat_org = transects[transect_names[i]]['lat_org']
+        eta = transects[transect_names[i]]['eta']
+        xi = transects[transect_names[i]]['xi']
         
-        eta, xi = get_eta_xi_along_transect(lon_rho, lat_rho,
-                                            lon_land, lat_land,
-                                            lon_ocean, lat_ocean,
-                                            transect_ds)
-       
         transect = {'name': transect_names[i],
-                    'lon':lon_rho[eta, xi], 'lat': lat_rho[eta, xi],
-                    'lon_land': lon_land, 'lat_land': lat_land,
-                    'lon_ocean': lon_ocean, 'lat_ocean': lat_ocean}
+                    'lon_org': lon_org, 'lat_org': lat_org,
+                    'eta': eta, 'xi': xi}
 
         transects_to_plot.append(transect)
         
@@ -63,11 +59,11 @@ def plot_transects(ax:plt.axes, transects:list[dict], df_dswt:pd.DataFrame, time
         else:
             l_dswt = None
         if l_dswt == True:
-            ax.plot(transect['lon'], transect['lat'], '-', color='#1b7931', label=transect['name'])
+            ax.plot(transect['lon_org'], transect['lat_org'], '-', color='#1b7931', label=transect['name'])
         elif l_dswt == False:
-            ax.plot(transect['lon'], transect['lat'], '-', color='k', label=transect['name'])
+            ax.plot(transect['lon_org'], transect['lat_org'], '-', color='k', label=transect['name'])
         else:
-            ax.plot(transect['lon'], transect['lat'], '-', color='#989898')
+            ax.plot(transect['lon_org'], transect['lat_org'], '-', color='#989898')
     # legend
     legend_elements = [Line2D([0], [0], color='#1b7931'), Line2D([0], [0], color='k'), Line2D([0], [0], color='#989898')]
     l = ax.legend(legend_elements, ['DSWT', 'no DSWT', 'unknown'], loc='upper left', bbox_to_anchor=(1.01, 1.0))
@@ -131,12 +127,16 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset,
         ax1 = plt.subplot(3, 2, 1, projection=ccrs.PlateCarree())
         c1 = roms_ds[variable][t, -1, :, :].plot(ax=ax1, transform=ccrs.PlateCarree(), x='lon_rho', y='lat_rho',
                                                   vmin=vmin, vmax=vmax, cmap=cmap, add_colorbar=False)
+        ax1.set_extent([lon_range_default[0], lon_range_default[1],
+                        lat_range_default[0], lat_range_default[1]], ccrs.PlateCarree())
         ax1.set_title('Surface')
         
         # --- Bottom map
         ax2 = plt.subplot(3, 2, 2, projection=ccrs.PlateCarree(), sharex=ax1, sharey=ax1)
         c2 = roms_ds[variable][t, 0, :, :].plot(ax=ax2, transform=ccrs.PlateCarree(), x='lon_rho', y='lat_rho',
                                                  vmin=vmin, vmax=vmax, cmap=cmap, add_colorbar=False)
+        ax2.set_extent([lon_range_default[0], lon_range_default[1],
+                        lat_range_default[0], lat_range_default[1]], ccrs.PlateCarree())
         ax2.set_title('Bottom')
         
         # --- Reposition axes
@@ -185,7 +185,7 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset,
             
             # --- Water column plot
             ax3.clear()
-            transect_ds = select_roms_transect(roms_ds, transect['lon_land'], transect['lat_land'], transect['lon_ocean'], transect['lat_ocean'], 500.)
+            transect_ds = select_roms_transect_from_known_coordinates(roms_ds, transect['eta'], transect['xi'])
             transect_ds[variable][t, :, :].plot(x='distance', y='z_rho', vmin=vmin, vmax=vmax, cmap=cmap, add_colorbar=False, ax=ax3)
             
             l_dswt, _, _, _, _ = determine_dswt_along_transect(transect_ds, config)
@@ -225,16 +225,17 @@ def plot_dswt_maps_transects(roms_ds:xr.Dataset,
     plt.show()
     
 if __name__ == '__main__':
-    input_path = f'{get_dir_from_json("cwa")}2017/cwa_20170514_03__his.nc'
+    input_path = f'{get_dir_from_json("cwa")}2017/cwa_20170211_03__his.nc'
     grid_file = f'{get_dir_from_json("cwa")}grid.nc'
     roms_ds = load_roms_data(input_path, grid_file)
     
     lon_range = [114., 116.]
     lat_range = [-33.0, -31.0]
-    transects = get_transects_in_lon_lat_range('input/transects/cwa_transects.json', lon_range, lat_range)
+    transects = read_transects_in_lon_lat_range_from_json('input/transects/cwa_transects.json', lon_range, lat_range)
     
     config = read_config('cwa')
     
     df_dswt = pd.read_csv('output/cwa_114-116E_33-31S/dswt_2017.csv', index_col=['time', 'transect']) # (this is a MultiIndex DataFrame)
+    # df_dswt = None
     
     plot_dswt_maps_transects(roms_ds, transects, df_dswt, config)

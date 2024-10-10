@@ -19,8 +19,7 @@ from warnings import warn
 # User input
 # --------------------------------------------------------
 model = 'cwa'
-# years = np.arange(2000, 2024)
-years = [2017]
+years = np.arange(2000, 2024)
 
 # --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
