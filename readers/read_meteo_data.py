@@ -4,18 +4,13 @@ sys.path.insert(1, parent)
 
 from tools.files import get_files_in_dir, get_dir_from_json
 from tools.wind import convert_u_v_to_meteo_vel_dir, get_lon_lat_range_indices
-from tools.timeseries import get_daily_means
+from tools.timeseries import get_daily_means, get_monthly_means
 from tools.arrays import get_closest_index
 from tools import log
 import numpy as np
 import xarray as xr
 import pandas as pd
-import dask
-from dask.distributed import Client
 from datetime import datetime
-
-# c = Client(n_workers=8, threads_per_worker=1, memory_limit='2GB')
-# c.cluster
 
 def select_input_paths(input_dir:str, file_contains:str, filetype='nc') -> list:
     all_files = get_files_in_dir(input_dir, filetype)
@@ -118,6 +113,28 @@ def read_wind_from_csvs(input_paths:list[str]) -> tuple[np.ndarray[datetime], np
     time = np.array([pd.to_datetime(t) for t in time])
         
     return time, u, v, vel, dir
+
+class WindTimeseries:
+    def __init__(self, time:np.ndarray[datetime],
+                 u:np.ndarray[float],
+                 v:np.ndarray[float],
+                 vel:np.ndarray[float],
+                 dir:np.ndarray[float]):
+        self.time = time
+        self.u = u
+        self.v = v
+        self.vel = vel
+        self.dir = dir
+        self.time_m, self.vel_m = get_monthly_means(time, vel)
+        _, self.dir_m = get_monthly_means(time, dir)
+
+    @staticmethod
+    def read_from_multiple_csvs(input_dir:str, years:list) -> tuple:
+        input_paths = []
+        for i in range(len(years)):
+            input_paths.append(f'{input_dir}wind_{years[i]}.csv')
+        time, u, v, vel, dir = read_wind_from_csvs(input_paths)
+        return WindTimeseries(time, u, v, vel, dir)
     
 if __name__ == '__main__':
     input_dir = get_dir_from_json('era5')
