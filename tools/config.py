@@ -20,6 +20,12 @@ class Config:
     cross_shelf_surface_layers_percentage: float
     cross_shelf_interior_layers_percentage: float
 
+def print_config(config:Config):
+    print(f'''Current configuration settings are:
+          drho/dz threshold: {config.minimum_drhodz} kg/m$^3$/m,
+          for a minimum of {config.minimum_percentage_consecutive_cells*100}% consecutive grid cells,
+          over the {config.drhodz_depth_percentage*100}% of the bottom grid cells.''')
+
 def read_config(model:str, input_path='input/configs/main_config.toml') -> dict:
     full_config = toml.load(input_path)
     config = dict(full_config['DEFAULT'])

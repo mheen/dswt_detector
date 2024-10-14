@@ -4,7 +4,7 @@ sys.path.insert(1, parent)
 
 from plot_tools.basic_maps import plot_basic_map
 from plot_tools.general import add_subtitle
-from readers.read_ocean_data import select_roms_transect_from_known_coordinates
+from readers.read_ocean_data import select_roms_transect_from_known_coordinates, find_filepath_for_specific_date
 from dswt.dswt_detection import determine_dswt_along_transect
 
 from tools.config import read_config, Config
@@ -348,6 +348,23 @@ class InteractiveTransectSelectionTimeStepping:
             
     def show(self):
         plt.show()
+        
+def interactive_transect_time_cycling_plot(input_dir:str, grid_file:str,
+                                           transects:dict, config:Config,
+                                           df_dswt=None):
+    date_str = input('For which day would you like to check model data (dd-mm-yyyy)?')
+    input_path = find_filepath_for_specific_date(input_dir, datetime.strptime(date_str, '%d-%m-%Y'))
+    
+    roms_ds = load_roms_data(input_path, grid_file)
+    
+    lon_range = [min([min(transects[t]['lon_org']) for t in transects.keys()]),
+                 max([max(transects[t]['lon_org']) for t in transects.keys()])]
+    lat_range = [min([min(transects[t]['lat_org']) for t in transects.keys()]),
+                 max([max(transects[t]['lat_org']) for t in transects.keys()])]
+    
+    interactive_plot = InteractiveTransectSelectionTimeStepping(roms_ds, transects, df_dswt, config,
+                                                                lon_range, lat_range)
+    interactive_plot.show()
     
 if __name__ == '__main__':
     input_path = f'{get_dir_from_json("cwa")}2017/cwa_20170211_03__his.nc'

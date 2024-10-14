@@ -1,11 +1,12 @@
 from transects import generate_transects_json_file, read_transects_in_lon_lat_range_from_json
 from guis.transect_removal import interactive_transect_removal
 from guis.transect_addition import interactive_transect_addition
+from guis.check_dswt_config import interactive_transect_time_cycling_plot
 from readers.read_ocean_data import load_roms_data, select_input_files
 
 from dswt.dswt_detection import determine_daily_dswt_along_multiple_transects
 from tools.dswt_output import get_domain_str
-from tools.config import Config, read_config
+from tools.config import Config, read_config, print_config
 from tools import log
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
 import os
@@ -50,7 +51,7 @@ create_dir_if_does_not_exist(output_dir)
 transects_file = f'{transects_dir}{model}_transects.json'
 
 # --------------------------------------------------------
-# 1. Create transects
+# 1. Create and/or read in transects
 # --------------------------------------------------------
 log.info('''----------------------------------------------
                Creating transects
@@ -77,6 +78,8 @@ if not os.path.exists(transects_file):
 else:
     log.info(f'Transects file already exists, using existing file: {transects_file}')
 
+transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
+
 # --------------------------------------------------------
 # 2. Input files check
 # --------------------------------------------------------
@@ -87,6 +90,7 @@ log.info('''----------------------------------------------
 input_dir = f'{model_input_dir}{years[0]}/'
 roms_files = select_input_files(input_dir, file_preface=file_preface)
 
+# assuming curvilinear ROMS grid (does not work on other grids yet)
 required_vars = ['ocean_time', 's_rho', 's_w',
                  'Vtransform', 'Cs_r', 'Cs_w', 'hc',
                  'angle', 'lon_rho', 'lat_rho', 'h',
@@ -97,10 +101,8 @@ vars = list(ds_roms.keys()) + list(ds_roms.coords)
 for v in required_vars:
     if not v in vars:
         raise ValueError(f'Missing required ROMS variable: {v}')
-    
-# what if model uses rectilinear grid? it doesn't need all variables in that case (test with ozROMS?)
 
-# check that files contain daily data -> need to allow for other formats as well?
+# check that files contain daily data (does not allow any other input file format yet)
 if len(ds_roms.ocean_time) > 0:
     hours = (pd.to_datetime(ds_roms.ocean_time.values[-1])-pd.to_datetime(ds_roms.ocean_time.values[0])).total_seconds()/(60*60)
     if hours > 24.0:
@@ -123,8 +125,12 @@ ds_roms = None
 # 3. Determine config parameters
 # --------------------------------------------------------
 
-# use from config file if existing for model
-# otherwise run manual checks to determine values
+print_config(config)
+bool_str = input('Would you like to check these settings? y/n')
+if bool_str.lower().startswith('y'):
+    interactive_transect_time_cycling_plot(model_input_dir, grid_file, transects, config)
+else:
+    log.info('Continuing with DSWT detection with current config.')
 
 # --------------------------------------------------------
 # 4. Performance check
@@ -158,7 +164,6 @@ for year in years:
     else:
         date_range = [datetime(year, 1, 1), datetime(year, 12, 31)]
     
-    transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
     roms_files = select_input_files(input_dir, file_preface=file_preface, date_range=date_range)
     roms_files.sort()
 
