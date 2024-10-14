@@ -280,7 +280,7 @@ class InteractiveTransectSelectionTimeStepping:
             self.ax6.set_xlim([self.transect_ds.distance.values[0], self.transect_ds.distance.values[-1]])
             self.ax6.set_ylim([-200, 0])
             self.ax6.set_xlabel('')
-            self.ax4.set_xticklabels([])
+            self.ax6.set_xticklabels([])
             self.ax6.set_ylabel('Depth')
             self.ax6.yaxis.set_label_coords(0.07, 0.5, transform=self.ax6.transAxes)
             self.ax6.set_yticks([0, -50, -100, -150, -200])
@@ -300,6 +300,7 @@ class InteractiveTransectSelectionTimeStepping:
             self.ax7.yaxis.set_label_position('right')
             self.ax7.set_xlabel('Vertical density gradient (kg/m$^3$/m)')
             self.ax7.set_title('')
+            self.ax7.plot([self.config.minimum_drhodz, self.config.minimum_drhodz], [-200, 0], '-k')
             
             # colorbars
             cbar4 = plt.colorbar(c4, cax=self.cax4)
