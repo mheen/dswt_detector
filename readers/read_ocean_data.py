@@ -14,6 +14,12 @@ from tools.seawater_density import calculate_density
 
 g = 9.81 # m/s2
 
+def find_filepath_for_specific_date(input_dir:str, date:datetime):
+    input_dir_year = f'{input_dir}{date.strftime("%Y")}/'
+    input_file = [p for p in os.listdir(input_dir_year) if date.strftime("%Y%m%d") in p][0]
+    input_path = f'{input_dir_year}{input_file}'
+    return input_path
+
 def select_input_files(input_dir:str, file_preface=None,
                        date_range=None, dateformat='%Y%m%d',
                        remove_gridfile=True, filetype='nc', file_contains=None) -> list[str]:
