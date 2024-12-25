@@ -2,7 +2,7 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
-from plot_tools.dswt import transects_plot
+from performance_tests.plot_transects_for_manual_check import transects_plot
 from readers.read_ocean_data import select_input_files, load_roms_data, select_roms_transect_from_known_coordinates
 from transects import read_transects_in_lon_lat_range_from_json
 from tools.files import get_dir_from_json
@@ -13,31 +13,7 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 
-recheck_differences = False
-
-year = 2017
-model = 'cwa'
-grid_file = f'{get_dir_from_json("cwa")}grid.nc'
-
-# --- Calculate total number of transects for model year
-input_dir = f'{get_dir_from_json("cwa")}{year}/'
-files_contain = f'{model}_'
-input_files = select_input_files(input_dir, file_preface=files_contain)
-
-lon_range = [114.0, 116.0]
-lat_range = [-33.0, -31.0]
-transects_file = f'input/transects/{model}_transects.json'
-transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
-
-n_files = len(input_files)
-n_transects = len(transects)
-n_times = len(xr.load_dataset(input_files[0]).ocean_time.values)
-total_transects = n_files*n_transects*n_times
-
-performance_file = f'performance_tests/output/{model}_{year}_performance_comparison.csv'
-
-# --- Check performance
-def check_performance(performance_file:str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def check_performance(performance_file:str, diff_file:str) -> tuple[pd.DataFrame, pd.DataFrame]:
     df = pd.read_csv(performance_file)
 
     manual_dswt = df['manual_dswt'].values
@@ -46,9 +22,7 @@ def check_performance(performance_file:str) -> tuple[pd.DataFrame, pd.DataFrame]
     l_comparison = manual_dswt == algorithm_dswt
     performance = np.sum(l_comparison)/len(manual_dswt)*100
 
-    p_covered = len(df)/total_transects*100
-
-    log.info(f'Algorithm performance: {np.round(performance, 1)}% accuracy based on {len(df)} tests, which is {np.round(p_covered, 2)}% of all available transects.')
+    log.info(f'Algorithm performance: {np.round(performance, 1)}% accuracy based on {len(df)} tests.')
     
     df_diff = df.loc[l_comparison == False]
     
@@ -57,21 +31,17 @@ def check_performance(performance_file:str) -> tuple[pd.DataFrame, pd.DataFrame]
     
     log.info(f'False positives: {false_positives/len(df_diff)*100}% - False negatives: {false_negatives/len(df_diff)*100}% of mistakenly detected DSWT.')
     
-    return df, df_diff
-
-df, df_diff = check_performance(performance_file)
-
-# --- Write differences to file
-def write_differences_to_file(df_diff):
-    diff_file = f'performance_tests/output/{model}_{year}_performance_differences.csv'
-    
     df_diff.to_csv(diff_file, index=False)
     log.info(f'Wrote differences between manual and algorithm to csv file: {diff_file}')
+    
+    return df, df_diff
 
-write_differences_to_file(df_diff)
-
-# --- Check differences and change manual input if wanted
-if recheck_differences == True:
+def recheck_differences(input_dir:str, grid_file:str, transects:dict,
+                        performance_file:str, diff_file:str):
+    
+    df = pd.read_csv(performance_file)
+    df_diff = pd.read_csv(diff_file)
+    
     changes = 0
     for i in range(len(df_diff)):
         filename = df_diff["filename"].values[i]
@@ -87,8 +57,7 @@ if recheck_differences == True:
         eta = transects[transect_name]['eta']
         xi = transects[transect_name]['xi']
         transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
-        fig = plt.figure(figsize=(6, 8))
-        fig = transects_plot(transect_ds, t, fig, 3, 2, 1, set_vlim=False)
+        transects_plot(transect_ds, t)
         plt.show()
         
         manual_input_str = input('DSWT True/False (t/f): ')
@@ -105,8 +74,31 @@ if recheck_differences == True:
         
         # redo performance check if any changes
         df, df_diff = check_performance(performance_file)
-        write_differences_to_file(df_diff)
+        
+        df_diff.to_csv(diff_file, index=False)
+        log.info(f'Wrote differences between manual and algorithm to csv file: {diff_file}')
         
     else:
         log.info(f'Performance not changed after manual checks of differences')
         
+if __name__ == '__main__':
+    recheck = False
+
+    year = 2017
+    model = 'cwa'
+    grid_file = f'{get_dir_from_json("cwa")}grid.nc'
+    input_dir = f'{get_dir_from_json("cwa")}{year}/'
+
+    lon_range = [114.0, 116.0]
+    lat_range = [-33.0, -31.0]
+    transects_file = f'input/transects/{model}_transects.json'
+    transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
+
+    performance_file = f'performance_tests/output/{model}_{year}_performance_comparison.csv'
+    diff_file = f'performance_tests/output/{model}_{year}_performance_differences.csv'
+
+    df, df_diff = check_performance(performance_file)
+    
+    if recheck == True:
+        recheck_differences(input_dir, grid_file, transects,
+                            performance_file, diff_file)

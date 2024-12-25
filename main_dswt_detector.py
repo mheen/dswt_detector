@@ -2,6 +2,10 @@ from transects import generate_transects_json_file, read_transects_in_lon_lat_ra
 from guis.transect_removal import interactive_transect_removal
 from guis.transect_addition import interactive_transect_addition
 from guis.check_dswt_config import interactive_transect_time_cycling_plot
+
+from performance_tests.manual_random_checks import manual_performance_checks
+from performance_tests.rate_performance import check_performance, recheck_differences
+
 from readers.read_ocean_data import load_roms_data, select_input_files
 
 from dswt.dswt_detection import determine_daily_dswt_along_multiple_transects
@@ -20,7 +24,8 @@ from warnings import warn
 # User input
 # --------------------------------------------------------
 model = 'cwa'
-years = np.arange(2000, 2024)
+years = np.array([2017]) # years to detect DSWT
+performance_year = 2017 # year to check performance of DSWT detection
 
 # --- Domain range
 lon_range = [114.0, 116.0] # set to None for full domain
@@ -30,7 +35,7 @@ lat_range = [-33.0, -31.0] # set to None for full domain
 config = read_config(model)
 
 # --- Input file info
-model_input_dir = get_dir_from_json('cwa')
+model_input_dir = get_dir_from_json('test_data', json_file='input/example_dirs.json')
 grid_file = f'{model_input_dir}grid.nc' # set to None if grid information in output files
 file_preface = f'{model}_'
 
@@ -126,7 +131,7 @@ ds_roms = None
 # --------------------------------------------------------
 
 print_config(config)
-bool_str = input('Would you like to check these settings? y/n')
+bool_str = input('Would you like to check these settings? y/n: ')
 if bool_str.lower().startswith('y'):
     interactive_transect_time_cycling_plot(model_input_dir, grid_file, transects, config)
 else:
@@ -135,9 +140,31 @@ else:
 # --------------------------------------------------------
 # 4. Performance check
 # --------------------------------------------------------
+performance_file = f'performance_tests/output/{model}_{performance_year}_performance_comparisonb.csv'
+diff_file = f'performance_tests/output/{model}_{performance_year}_performance_differencesb.csv'
 
-# report on DSWT detection performance
-# run manual performance checks if wanted
+def _check():
+    _, _ = check_performance(performance_file, diff_file)
+    bool_str = input('Do you want to recheck differences? y/n: ')
+    if bool_str.lower().startswith('y'):
+        recheck_differences(f'{model_input_dir}{performance_year}/', grid_file, transects,
+                            performance_file, diff_file)
+
+if os.path.exists(performance_file):
+    _check()      
+else:
+    bool_check = input('No manual performance comparison exists yet. Would you like to run this? y/n: ')
+    if bool_check.lower().startswith('y'):
+        n_files = int(input('How many files do you want to check?'))
+        n_transects_per_file = int(input('How many transects per file?'))
+        n_times_to_check = int(input('How many times per transect per file?'))
+        manual_performance_checks(f'{model_input_dir}{performance_year}/', grid_file, model, performance_year,
+                                    transects, None, n_files, n_transects_per_file, n_times_to_check,
+                                    performance_file)
+        _check()
+    else:
+        log.info('''You can run performance checks using "performance_tests/manual_random_checks"
+                    and "performance_tests/rate_performance" if you want to do this later.''')
 
 # --------------------------------------------------------
 # 5. Detect DSWT & cross-shelf DSWT transport
