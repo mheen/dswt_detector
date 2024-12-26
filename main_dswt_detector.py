@@ -1,10 +1,12 @@
 from transects import generate_transects_json_file, read_transects_in_lon_lat_range_from_json
 from guis.transect_removal import interactive_transect_removal
-from guis.transect_addition import interactive_transect_addition
+from guis.transect_addition import interactive_transect_addition, write_added_transect_keys_to_file
 from guis.check_dswt_config import interactive_transect_time_cycling_plot
 
 from performance_tests.manual_random_checks import manual_performance_checks
 from performance_tests.rate_performance import check_performance, recheck_differences
+
+from processing import process_dswt_output
 
 from readers.read_ocean_data import load_roms_data, select_input_files
 
@@ -23,7 +25,7 @@ from warnings import warn
 # --------------------------------------------------------
 # User input
 # --------------------------------------------------------
-model = 'cwa'
+model = 'test'
 years = np.array([2017]) # years to detect DSWT
 performance_year = 2017 # year to check performance of DSWT detection
 
@@ -37,7 +39,7 @@ config = read_config(model)
 # --- Input file info
 model_input_dir = get_dir_from_json('test_data', json_file='input/example_dirs.json')
 grid_file = f'{model_input_dir}grid.nc' # set to None if grid information in output files
-file_preface = f'{model}_'
+file_preface = f'{model}_' # set to None if files don't have a string preface
 
 # --------------------------------------------------------
 # Optional file settings (no need to change)
@@ -51,9 +53,8 @@ create_dir_if_does_not_exist(output_dir)
 
 # using transects for entire model domain and then selecting
 # only relevant ones within requested domain range
-# (using this method because cutting of the model domain
-# to generate transects can go wrong when determining the land polygon)
 transects_file = f'{transects_dir}{model}_transects.json'
+islands_file = f'{transects_dir}{model}_transects_islands.csv'
 
 # --------------------------------------------------------
 # 1. Create and/or read in transects
@@ -72,9 +73,10 @@ if not os.path.exists(transects_file):
                                                      lat_range=lat_range)
     
     # add transects in specific regions and from specific contour (useful when there are islands)
-    added_transects = interactive_transect_addition(transects_file, grid_ds, config,
+    added_transects_bool, added_from_index = interactive_transect_addition(transects_file, grid_ds, config,
                                   lon_range=lon_range, lat_range=lat_range)
-    if added_transects == True:
+    if added_transects_bool == True:
+        write_added_transect_keys_to_file(transects_file, added_from_index, islands_file)
         # plot removal again to see if any of the added transects need to be removed
         interactive_transect_removal(transects_file, grid_ds, config,
                                      lon_range=lon_range,
@@ -204,6 +206,37 @@ for year in years:
             df_transects_dswt.to_csv(output_dswt, mode='a', header=False, index=False)
         else:
             df_transects_dswt.to_csv(output_dswt, index=False)
+
+# --------------------------------------------------------
+# 6. Process DSWT output
+# --------------------------------------------------------
+# The DSWT detection algorithm has some faulty detections of DSWT.
+# These cases are removed here as a processing step. Ideally the
+# algorithm would be improved and this would be incorporated in
+# the detection, rather than as a processing step.
+# For now however, I am solving these faulty detections in processing.
+#
+# Make sure that this part of the script has run to not get unexpected
+# results (mainly in the cross-shelf transport calculations, the effect
+# on the occurrence detections seems minimal)!
+# You can also run these function from the processing script directly.
+
+log.info('''--------------------------------------------------
+            Processing DSWT output (removing faulty transport)
+            --------------------------------------------------''')
+
+for year in years:
+    log.info(f'Processing DSWT for {year}')
+    output_dswt = f'{output_dir}dswt_{year}.csv'
+    
+    if os.path.exists(output_dswt):
+        df = pd.read_csv(output_dswt)
+        if os.path.exists(islands_file):
+            island_transects = pd.read_csv(islands_file)['added_transects'].values
+        else:
+            island_transects = None
+        
+        process_dswt_output(df, output_dswt, island_transects)
 
 # --------------------------------------------------------
 # Output: timeseries and maps analyses and plots

@@ -4,19 +4,18 @@ sys.path.insert(1, parent)
 
 from guis.transect_removal import map_with_land_and_contours, convert_land_mask_to_polygons
 from tools.config import Config, read_config
-from transects import read_transects_in_lon_lat_range_from_json, read_transects_dict_from_json
+from transects import read_transects_dict_from_json
 from transects import get_depth_contours, get_starting_points, find_transects_from_starting_points
 from tools.files import get_dir_from_json
 from tools import log
 
-from rasterio import features
 import shapely
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-import cartopy.mpl.ticker as cticker
 import numpy as np
 import xarray as xr
 import json
+import pandas as pd
 
 def transect_addition_plot(transects_file:str,
                            grid_ds:xr.Dataset,
@@ -158,6 +157,7 @@ def add_transects(add_polygon:shapely.Polygon, i_start_contour:int,
                   ds_grid:xr.Dataset, config:Config, output_path:str) -> bool:
     
     added_transects_bool = False
+    added_from_transect = None
     # get approximate grid resolution (in degrees):
     dx = np.nanmean(np.unique(np.diff(ds_grid.lon_rho.values, axis=1)))
     dy = np.nanmean(np.unique(np.diff(ds_grid.lat_rho.values, axis=0)))
@@ -179,17 +179,18 @@ def add_transects(add_polygon:shapely.Polygon, i_start_contour:int,
     transects_all = read_transects_dict_from_json(output_path)
     transect_keys = np.sort(np.array([int(t.replace('t', '')) for t in transects_all.keys()]))
     new_transects = find_transects_from_starting_points(ds_grid, contours, lon_ps, lat_ps, ds, config,
-                                                    start_index=transect_keys[-1]+1)
+                                                        start_index=transect_keys[-1]+1)
     
     if len(new_transects) != 0:
         added_transects_bool = True
+        added_from_transect = transect_keys[-1]+1
         transects_all.update(new_transects) # add new transects to existing ones
 
         log.info(f'Appending additional transects to json file: {output_path}')
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(transects_all, f, ensure_ascii=False, indent=4)
         
-    return added_transects_bool
+    return added_transects_bool, added_from_transect
 
 def interactive_transect_addition(transects_file:str, grid_ds:xr.Dataset, config:Config,
                                   lon_range=None, lat_range=None, transect_interval=1,
@@ -202,16 +203,41 @@ def interactive_transect_addition(transects_file:str, grid_ds:xr.Dataset, config
     interactive_addition.show()
     add_polygon = shapely.Polygon(list(zip(interactive_addition.lons, interactive_addition.lats)))
 
-    added_transects_bool = add_transects(add_polygon, interactive_addition.c, grid_ds, config, transects_file)
+    added_transects_bool, added_from_index = add_transects(add_polygon, interactive_addition.c, grid_ds, config, transects_file)
     
-    return added_transects_bool
+    return added_transects_bool, added_from_index
+
+def get_added_transect_keys(transects_file:str, added_from_index:int) -> list[str]:
+    
+    transects_all = read_transects_dict_from_json(transects_file)
+    transect_keys_int = np.sort(np.array([int(t.replace('t', '')) for t in transects_all.keys()]))
+    
+    i_start_added = np.where(transect_keys_int == added_from_index)[0][0]
+    added_transect_keys = [f't{t_added}' for t_added in transect_keys_int[i_start_added: ]]
+    
+    return added_transect_keys
+
+def write_added_transect_keys_to_file(transects_file:str, added_from_index:int, output_path:str):
+    
+    added_transect_keys = get_added_transect_keys(transects_file, added_from_index)
+    
+    df = pd.DataFrame(data=added_transect_keys, columns=['added_transects'])
+    if os.path.exists(output_path):
+        df.to_csv(output_path, mode='a', header=False, index=False)
+    else:
+        df.to_csv(output_path, index=False)
+    log.info(f'Saved added transect keys to {output_path}')
 
 if __name__ == '__main__':
-    transects_file = 'input/transects/cwa_transects.json'
+    transects_file = 'input/transects/test_transects.json'
+    islands_file = 'input/transects/test_transects_islands.csv'
     
-    grid_file = f'{get_dir_from_json("cwa")}grid.nc'
+    grid_file = f'{get_dir_from_json("test_data", json_file="input/example_dirs.json")}grid.nc'
     grid_ds = xr.load_dataset(grid_file)
     
     config = read_config('cwa')
     
-    interactive_transect_addition(transects_file, grid_ds, config)
+    added_transects_bool, added_from_index = interactive_transect_addition(transects_file, grid_ds, config)
+    
+    if added_transects_bool == True:
+        write_added_transect_keys_to_file(transects_file, added_from_index, islands_file)
