@@ -9,12 +9,11 @@ from performance_tests.rate_performance import check_performance, recheck_differ
 from processing import process_dswt_output
 
 from readers.read_ocean_data import load_roms_data, select_input_files
-from readers.read_dswt_output import read_dswt_occurrence_timeseries, read_dswt_transport, calculate_transport_across_contour
+from readers.read_dswt_output import get_domain_str, read_dswt_occurrence_timeseries, read_dswt_transport, calculate_transport_across_contour
 
 from main_plots import plot_dswt_timeseries, plot_dswt_map
 
 from dswt.dswt_detection import determine_daily_dswt_along_multiple_transects
-from tools.dswt_output import get_domain_str
 from tools.config import Config, read_config, print_config
 from tools import log
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist

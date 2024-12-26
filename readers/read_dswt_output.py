@@ -13,6 +13,15 @@ import xarray as xr
 import pandas as pd
 import os
 
+def get_domain_str(lon_range:list, lat_range:list) -> str:
+    lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
+    lon_range_unit = 'E' if lon_range[0] > 0 else 'W'
+    lat_range_str = f'{int(abs(np.floor(lat_range[0])))}-{int(abs(np.ceil(lat_range[1])))}'
+    lat_range_unit = 'S' if lat_range[0] < 0 else 'S'
+    domain = f'{lon_range_str}{lon_range_unit}_{lat_range_str}{lat_range_unit}'
+    
+    return domain
+
 def _create_daily_time_array(year_start:int, year_end:int) -> np.ndarray[datetime]:
     time = []
     start_date = datetime(year_start, 1, 1)
