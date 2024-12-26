@@ -9,6 +9,9 @@ from performance_tests.rate_performance import check_performance, recheck_differ
 from processing import process_dswt_output
 
 from readers.read_ocean_data import load_roms_data, select_input_files
+from readers.read_dswt_output import read_dswt_occurrence_timeseries, read_dswt_transport, calculate_transport_across_contour
+
+from main_plots import plot_dswt_timeseries, plot_dswt_map
 
 from dswt.dswt_detection import determine_daily_dswt_along_multiple_transects
 from tools.dswt_output import get_domain_str
@@ -41,6 +44,14 @@ model_input_dir = get_dir_from_json('test_data', json_file='input/example_dirs.j
 grid_file = f'{model_input_dir}grid.nc' # set to None if grid information in output files
 file_preface = f'{model}_' # set to None if files don't have a string preface
 
+# --- Plot info
+# Two plots will be created at the end of this script
+# One shows a timeseries of monthly mean DSWT occurrence and transport across a depth contour
+# The other shows a map of the overall mean cross-shelf transport
+# Specify the depth contour for the timeseries and the output folder to save plots to here
+depth_contour = 50.0
+plot_dir = get_dir_from_json('plots', json_file='input/example_dirs.json')
+
 # --------------------------------------------------------
 # Optional file settings (no need to change)
 transects_dir = 'input/transects/'
@@ -54,6 +65,8 @@ create_dir_if_does_not_exist(output_dir)
 # using transects for entire model domain and then selecting
 # only relevant ones within requested domain range
 transects_file = f'{transects_dir}{model}_transects.json'
+# if any transects are manually added, these are saved in the following file
+# and used for processing:
 islands_file = f'{transects_dir}{model}_transects_islands.csv'
 
 # --------------------------------------------------------
@@ -241,10 +254,27 @@ for year in years:
 # --------------------------------------------------------
 # Output: timeseries and maps analyses and plots
 # --------------------------------------------------------
+log.info('''--------------------------------------------------
+                              Creating plots
+            --------------------------------------------------''')
 
-# # to read csv and then get daily means:
-# df = pd.read_csv(output_dswt, index_col=['time', 'transect']) # (this is a MultiIndex DataFrame)
-# df.groupby('time').mean()
+log.info('Loading data from output csv files...')
+time, f_dswt = read_dswt_occurrence_timeseries(output_dir, years)
 
-# # to select specific values:
-# df.xs('2017-01-01', level='time', drop_level=False).xs('t153', level='transect', drop_level=False)
+lon, lat, h, df_transport, dx = read_dswt_transport(output_dir, years, grid_file)
+time, transport_contour, depth_contour, contour_length = calculate_transport_across_contour(df_transport,
+                                                                                            lon,
+                                                                                            lat,
+                                                                                            h,
+                                                                                            dx,
+                                                                                            lon_range,
+                                                                                            lat_range,
+                                                                                            depth_contour,
+                                                                                            dx_method='roms')
+timeseries_plot = f'{plot_dir}{model}_timeseries.jpg'
+map_plot = f'{plot_dir}{model}_map.jpg'
+plot_dswt_timeseries(time, f_dswt, transport_contour, years, output_path=timeseries_plot, show=False)
+log.info(f'Saved timeseries plot to {timeseries_plot}')
+
+plot_dswt_map(time, df_transport, lon, lat, h, output_path=map_plot, show=False)
+log.info(f'Saved map plot to {map_plot}')

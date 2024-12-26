@@ -1,3 +1,6 @@
+[test]
+minimum_drhodz = 0.02
+
 [cwa]
 minimum_drhodz = 0.02
 
