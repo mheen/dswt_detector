@@ -2,11 +2,16 @@ from tools import log
 import pandas as pd
 import numpy as np
 
+# WRONG: every transect needs a daily value (zero if no DSWT) for mean f_dswt to work correctly
+# so rather than removing entries, need to set them to zero!!!
+
 def remove_positive_transport(df:pd.DataFrame) -> pd.DataFrame:
     '''Function to remove any positive (towards the coast) cross-shelf transport,
     as this is not associated with DSWT. A similar approach has also been taken
     by others (e.g. Luneva et al. 2020).'''
-    df = df[df['transport_dswt'] > 0.0]
+    i_to_replace = df[df['transport_dswt'] < 0.0].index
+    df.loc[i_to_replace, 'f_dswt'] = 0.0
+    df.loc[i_to_replace, ['vel_dswt', 'transport_dswt', 'ds', 'dz_dswt', 'lon_transport', 'lat_transport', 'depth_transport']] = np.nan
 
     return df
 
@@ -28,14 +33,16 @@ def remove_transport_starting_too_deep(df:pd.DataFrame, max_starting_depth=45.0)
     '''
     
     df_depth = df.groupby(['time', 'transect']).agg(depth=('depth_transport', 'min'))
-    indices_to_remove = df_depth[df_depth['depth'] > max_starting_depth].index
+    i_to_replace = df_depth[df_depth['depth'] > max_starting_depth].index
     
     df_mi = df.set_index(['time', 'transect'])
-    df_na = df_mi.drop(indices_to_remove)
     
-    df_na = df_na.reset_index()
+    df_mi.loc[i_to_replace, 'f_dswt'] = 0.0
+    df_mi.loc[i_to_replace, ['vel_dswt', 'transport_dswt', 'ds', 'dz_dswt', 'lon_transport', 'lat_transport', 'depth_transport']] = np.nan
     
-    return df_na
+    df = df_mi.reset_index()
+    
+    return df
 
 def remove_faulty_transport_around_islands(df:pd.DataFrame, island_transects:list) -> pd.DataFrame:
     '''Function removes transport when DSWT has been detected in island transects but not anywhere else.
@@ -65,16 +72,19 @@ def remove_faulty_transport_around_islands(df:pd.DataFrame, island_transects:lis
     df_rott_gpd_pivot = df_rott_gpd.pivot(columns='island', values='t', index='time')
     
     # if island transects have transport when no other transects do: remove them
-    times_to_remove = df_rott_gpd_pivot[np.isnan(df_rott_gpd_pivot['Not Island'])].index
+    l_transport_island_nowhere_else = np.logical_and(np.isnan(df_rott_gpd_pivot['Not Island']), ~np.isnan(df_rott_gpd_pivot['Island']))
+    times_to_replace = df_rott_gpd_pivot[l_transport_island_nowhere_else].index
     
-    # if island transects have > 5 times transport than other transects: remove them
+    # if island transects have > 5 times transport than other transects: remove the island transects
     df_both = df_rott_gpd_pivot[np.logical_and(~np.isnan(df_rott_gpd_pivot['Not Island']), ~np.isnan(df_rott_gpd_pivot['Island']))]
     df_both['frac'] = df_both['Island'].values/df_both['Not Island'].values
-    times_to_remove.append(df_both[df_both['frac'] > 5].index)
+    times_to_replace.append(df_both[df_both['frac'] > 5].index)
     
-    df_na = df.drop(df[df['time'].isin(times_to_remove)].index)
+    i_to_replace = df[np.logical_and(df['time'].isin(times_to_replace), df['transect'].isin(island_transects))].index
+    df.loc[i_to_replace, 'f_dswt'] = 0.0
+    df.loc[i_to_replace, ['vel_dswt', 'transport_dswt', 'ds', 'dz_dswt', 'lon_transport', 'lat_transport', 'depth_transport']] = np.nan
     
-    return df_na
+    return df
 
 def process_dswt_output(df:pd.DataFrame, output_path:str, island_transects=None):
     
