@@ -62,19 +62,24 @@ def get_daily_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
 
     return np.array(daily_time), np.array(daily_values)
 
+def get_n_months_between_dates(start_date:datetime, end_date:datetime) -> int:
+    n_months = 0
+    add_date = add_month_to_time(start_date, n_months)
+    while add_date != end_date:
+        n_months += 1
+        add_date = add_month_to_time(start_date, n_months)
+        
+    return n_months+1
+
 def get_monthly_sums(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
     monthly_time = []
     monthly_values = []
 
     start_date = datetime(time[0].year, time[0].month, 1)
     end_date = datetime(time[-1].year, time[-1].month, 1)
-    n_months = 0
-    add_date = add_month_to_time(start_date, n_months)
-    while add_date != end_date:
-        n_months += 1
-        add_date = add_month_to_time(start_date, n_months)
+    n_months = get_n_months_between_dates(start_date, end_date)
 
-    for n in range(n_months+1):
+    for n in range(n_months):
         start_date = add_month_to_time(datetime(time[0].year, time[0].month, 1), n)
         end_date = add_month_to_time(start_date, 1)-timedelta(days=1)
         l_time = get_l_time_range(time, start_date, end_date)
@@ -89,13 +94,9 @@ def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
 
     start_date = datetime(time[0].year, time[0].month, 1)
     end_date = datetime(time[-1].year, time[-1].month, 1)
-    n_months = 0
-    add_date = add_month_to_time(start_date, n_months)
-    while add_date != end_date:
-        n_months += 1
-        add_date = add_month_to_time(start_date, n_months)
+    n_months = get_n_months_between_dates(start_date, end_date)
 
-    for n in range(n_months+1):
+    for n in range(n_months):
         start_date = add_month_to_time(datetime(time[0].year, time[0].month, 1), n)
         end_date = add_month_to_time(start_date, 1)-timedelta(days=1)
         l_time = get_l_time_range(time, start_date, end_date)
@@ -103,6 +104,17 @@ def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
         monthly_values.append(np.nanmean(values[l_time], axis=time_axis))
 
     return np.array(monthly_time), np.array(monthly_values)
+
+def get_monthly_climatology(time:np.ndarray, values:np.ndarray) -> tuple:
+    values_climatology = []
+    
+    for m in range(1, 13):
+        l_month = [t.month == m for t in time]
+        values_climatology.append(np.nanmean(values[l_month]))
+        
+    values_climatology = np.array(values_climatology)
+    
+    return values_climatology
 
 def get_yearly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
     yearly_time = []
