@@ -50,6 +50,7 @@ file_preface = f'{model}_' # set to None if files don't have a string preface
 # Specify the depth contour for the timeseries and the output folder to save plots to here
 depth_contour = 50.0
 plot_dir = get_dir_from_json('plots', json_file='input/example_dirs.json')
+create_dir_if_does_not_exist(plot_dir)
 
 # --------------------------------------------------------
 # Optional file settings (no need to change)
@@ -154,8 +155,8 @@ else:
 # --------------------------------------------------------
 # 4. Performance check
 # --------------------------------------------------------
-performance_file = f'performance_tests/output/{model}_{performance_year}_performance_comparisonb.csv'
-diff_file = f'performance_tests/output/{model}_{performance_year}_performance_differencesb.csv'
+performance_file = f'performance_tests/output/{model}_{performance_year}_performance_comparison.csv'
+diff_file = f'performance_tests/output/{model}_{performance_year}_performance_differences.csv'
 
 def _check():
     _, _ = check_performance(performance_file, diff_file)
@@ -237,6 +238,8 @@ log.info('''--------------------------------------------------
             Processing DSWT output (removing faulty transport)
             --------------------------------------------------''')
 
+create_dir_if_does_not_exist(f'{output_dir}processed/')
+
 for year in years:
     log.info(f'Processing DSWT for {year}')
     output_dswt = f'{output_dir}dswt_{year}.csv'
@@ -248,7 +251,8 @@ for year in years:
         else:
             island_transects = None
         
-        process_dswt_output(df, output_dswt, island_transects)
+        processed_output_path = f'{output_dir}processed/dswt_{year}.csv'
+        process_dswt_output(df, processed_output_path, island_transects)
 
 # --------------------------------------------------------
 # Output: timeseries and maps analyses and plots
