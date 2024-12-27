@@ -60,7 +60,7 @@ def transect_addition_plot(transects_file:str,
         lat_org = transects[transect_names[i]]['lat_org']
         
         ax.plot(lon_org, lat_org, '-', color=color, linewidth=linewidth)
-        ax.text(lon_org[0], lat_org[0], transect_names[i], ha='right', va='center', fontsize=8)
+        # ax.text(lon_org[0], lat_org[0], transect_names[i], ha='right', va='center', fontsize=8)
         
     return fig, ax
 

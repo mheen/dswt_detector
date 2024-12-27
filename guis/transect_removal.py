@@ -112,7 +112,7 @@ def remove_transects_in_plot(transects_file:str,
         lat_org = transects[transect_names[i]]['lat_org']
         
         ax.plot(lon_org, lat_org, '-', color=color, linewidth=linewidth, label=transect_names[i])
-        ax.text(lon_org[0], lat_org[0], transect_names[i], ha='right', va='center', fontsize=8)
+        # ax.text(lon_org[0], lat_org[0], transect_names[i], ha='right', va='center', fontsize=8)
         
     # (b) grid cell coverage
     grid_coverage = np.zeros(grid_ds.lon_rho.shape)
