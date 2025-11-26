@@ -58,3 +58,10 @@ def get_index_closest_point(lon, lat, lon0, lat0, n_closest=1):
 def convert_lon_360_to_180(lon):
     lon[lon>180] = lon[lon>180]-360
     return lon
+
+def get_unique_coordinates(lon:np.ndarray, lat:np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    coords = list(zip(lon, lat))
+    unique_coords = np.array(list(set(coords)))
+    unique_lon = unique_coords[:, 0]
+    unique_lat = unique_coords[:, 1]
+    return unique_lon, unique_lat
