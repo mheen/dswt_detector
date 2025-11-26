@@ -11,6 +11,7 @@ from tools import log
 from tools.roms import get_z, find_eta_xi_covering_lon_lat_box, convert_roms_u_v_to_u_east_v_north
 from tools.roms import get_eta_xi_along_transect, get_distance_along_transect
 from tools.seawater_density import calculate_density
+from tools.coordinates import get_bearing_between_points
 
 g = 9.81 # m/s2
 
@@ -115,15 +116,16 @@ def add_variables_to_roms_data(roms_ds:xr.Dataset) -> xr.Dataset:
         depth_mean_density = np.sum(roms_ds.density.values*roms_ds.delta_z.values, axis=1)/roms_ds.h.values
         roms_ds['depth_mean_density'] = (['ocean_time', 'eta_rho', 'xi_rho'], depth_mean_density)
         
-        # --- calculate vertical density gradient
-        delta_z_rho = np.diff(roms_ds.z_rho.values, axis=0)
-        drhodz = -np.diff(roms_ds.density, axis=1)/delta_z_rho # minus diff(density) because 0 element is at bottom
-        # add dummy drhodz at surface so same number of s_rho-layers
-        # !!! FIX !!! better way to do this?
-        drhodz_resized = np.hstack((drhodz, np.expand_dims(drhodz[:, -1, :, :], 1))) # duplicating values along the surface
-        roms_ds['vertical_density_gradient'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], drhodz_resized)
+        # --- calculate vertical density difference
+        drho_z = np.diff(roms_ds.density.values, axis=1)
+        # convert vertical density difference back to rho-points
+        drho_z_rho = np.empty(roms_ds.density.shape) * np.nan
+        drho_z_rho[:, 1:-1, :] = 0.5 * (drho_z[:, 0:-1, :] + drho_z[:, 1:, :])
+        drho_z_rho[:, 0, :] = drho_z[:, 0, :]
+        drho_z_rho[:, -1, :] = drho_z[:, -1, :]
+        roms_ds['drho_z'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], drho_z_rho)
         
-        # --- calculate potential energy anomaly
+        # --- calculate potential energy anomaly -> NOTE: possibly redundant? remove if so
         depth_mean_density_resized = np.repeat(depth_mean_density[:, np.newaxis, :, :], roms_ds.density.shape[1], axis=1)
         phi = g/roms_ds.h.values*np.sum((depth_mean_density_resized-roms_ds.density.values)*roms_ds.z_rho.values*roms_ds.delta_z.values, axis=1)
         roms_ds['potential_energy_anomaly'] = (['ocean_time', 'eta_rho', 'xi_rho'], phi)
@@ -133,8 +135,73 @@ def add_variables_to_roms_data(roms_ds:xr.Dataset) -> xr.Dataset:
         
     return roms_ds
 
+def calculate_down_transect_velocity_component(u:np.ndarray, v:np.ndarray,
+                                               lon1:float, lat1:float,
+                                               lon2:float, lat2:float) -> np.ndarray:
+    alpha = get_bearing_between_points(lon1, lat1, lon2, lat2)
+    alpha_rad = np.deg2rad(alpha)
+    down_transect = u*np.sin(alpha_rad)+v*np.cos(alpha_rad)
+    return down_transect
+
+def add_variables_to_transect_data(transect_ds:xr.Dataset):
+    # --- add distance along transect as a coordinate
+    distance = get_distance_along_transect(transect_ds.lon_rho.values, transect_ds.lat_rho.values)
+    transect_ds.coords['distance'] = distance
+    
+    dx = np.diff(distance)
+    # convert dx back to rho-points
+    dx_rho = np.empty(distance.shape) * np.nan
+    dx_rho[1:-1] = 0.5 * (dx[0:-1] + dx[1:])
+    dx_rho[0] = dx[0]
+    dx_rho[-1] = dx[-1]
+    transect_ds['delta_x'] = (['distance'], dx_rho)
+    
+    # --- add slope
+    slope = np.diff(transect_ds.h) / dx
+    # convert slope back to rho-points
+    slope_rho = np.empty(distance.shape) * np.nan
+    slope_rho[1:-1] = 0.5 * (slope[0:-1] + slope[1:])
+    slope_rho[0] = slope[0]
+    slope_rho[-1] = slope[-1]
+    transect_ds['slope'] = (['distance'], slope_rho)
+    
+    # --- add horizontal density difference
+    drho_x = np.diff(transect_ds.density.values, axis=2)
+    drho_dx = drho_x / dx
+    # convert drho_dx back to rho-points
+    drho_dx_rho = np.empty(transect_ds.density.shape) * np.nan
+    drho_dx_rho[:, :, 1:-1] = 0.5 * (drho_dx[:, :, 0:-1] + drho_dx[:, :, 1:])
+    drho_dx_rho[:, :, 0] = drho_dx[:, :, 0]
+    drho_dx_rho[:, :, -1] = drho_dx[:, :, -1]
+    transect_ds['drho_dx'] = (['ocean_time', 's_rho', 'distance'], drho_dx_rho)
+    
+    # --- add depth mean horizontal density gradient
+    drho_zmean = np.diff(transect_ds.depth_mean_density.values, axis=1)
+    drho_dx_zmean = drho_zmean / dx
+    # convert drho_dx_zmean back to rho-points
+    drho_dx_zmean_rho = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
+    drho_dx_zmean_rho[:, 1:-1] = 0.5 * (drho_dx_zmean[:, 0:-1] + drho_dx_zmean[:, 1:])
+    drho_dx_zmean_rho[:, 0] = drho_dx_zmean[:, 0]
+    drho_dx_zmean_rho[:, -1] = drho_dx_zmean[:, -1]
+    transect_ds['drho_dx_zmean'] = (['ocean_time', 'distance'], drho_dx_zmean_rho)
+    
+    # --- add down-transect velocity (positive down slope)
+    u_down = calculate_down_transect_velocity_component(
+                transect_ds.u_eastward.values,
+                transect_ds.v_northward.values,
+                transect_ds.lon_rho.values[0], # land location
+                transect_ds.lat_rho.values[0],
+                transect_ds.lon_rho.values[-1],
+                transect_ds.lat_rho.values[-1])
+    
+    transect_ds['u_down'] = (['ocean_time', 's_rho', 'distance'], u_down)
+    
+    return transect_ds
+
 def load_roms_data(input_path:str, grid_file=None, drop_vars=None) -> xr.Dataset:
-    roms_ds = read_roms_data([input_path], grid_file, drop_vars=drop_vars)
+    if not type(input_path) == list:
+        input_path = [input_path]
+    roms_ds = read_roms_data(input_path, grid_file, drop_vars=drop_vars)
     roms_ds = convert_roms_u_and_v(roms_ds)
     roms_ds = add_variables_to_roms_data(roms_ds)
     
@@ -171,9 +238,7 @@ def select_roms_transect_from_known_coordinates(roms_ds:xr.Dataset, eta:np.ndarr
     xis = xr.DataArray(xi, dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later
    
     transect_ds = roms_ds.sel(xi_rho=xis, eta_rho=etas)
-    
-    distance = get_distance_along_transect(transect_ds.lon_rho.values, transect_ds.lat_rho.values)
-    transect_ds.coords['distance'] = distance
+    transect_ds = add_variables_to_transect_data(transect_ds)
     
     return transect_ds
 
@@ -188,8 +253,6 @@ def select_roms_transect_from_start_end_coordinates(
     xis = xr.DataArray(xi, dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later
     
     transect_ds = roms_ds.sel(xi_rho=xis, eta_rho=etas)
-    
-    distance = get_distance_along_transect(transect_ds.lon_rho.values, transect_ds.lat_rho.values)
-    transect_ds.coords['distance'] = distance
+    transect_ds = add_variables_to_transect_data(transect_ds)
     
     return transect_ds
