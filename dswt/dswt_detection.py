@@ -8,7 +8,6 @@ from transects import read_transects_in_lon_lat_range_from_json
 from readers.read_ocean_data import load_roms_data
 
 from readers.read_ocean_data import select_roms_transect_from_known_coordinates
-from dswt.cross_shelf_transport import calculate_dswt_cross_shelf_transport_along_transect
 from itertools import groupby
 import numpy as np
 import xarray as xr
@@ -64,17 +63,20 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
         
         t_dswt = np.unique(np.where(l_dswt == True)[0])
         if len(t_dswt) == 0:
-            return (t_dswt, np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
+            return (np.array([0]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
             np.array([np.nan]), np.nan, np.nan, np.array([np.nan]), np.array([np.nan]))
         
         transport_dswt = np.zeros((len(transect_ds.ocean_time), len(transect_ds.distance)))
-        depth_mean_vel_dswt = np.zeros((len(transect_ds.ocean_time), len(transect_ds.distance)))
-        thickness_dswt = np.zeros((len(transect_ds.ocean_time), len(transect_ds.distance)))
-        min_drho_s = np.zeros((len(transect_ds.ocean_time), len(transect_ds.distance)))
-        mean_drho_s = np.zeros((len(transect_ds.ocean_time), len(transect_ds.distance)))
+        depth_mean_vel_dswt = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
+        thickness_dswt = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
+        min_drho_s = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
+        mean_drho_s = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
+        f_dswt = np.zeros(len(transect_ds.distance))
         for t in t_dswt:
             x_dswt = np.where(np.any(l_dswt[t, :, :], axis=0))[0]
             for x in x_dswt:
+                f_dswt[x] += 1
+                
                 z_dswt = np.where(l_dswt[t, :, x] == True)[0][-1] # shallowest layer up to which DSWT extends
                 # calculate transport from bottom up to shallowest layer where there is DSWT
                 transport_dswt[t, x] = np.nansum(all_transport[t, 0:z_dswt + 1, x] * u_down_condition[t, 0:z_dswt + 1, x].astype(int))
@@ -90,14 +92,17 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
         daily_mean_drho_s = np.nanmean(mean_drho_s, axis=0)
         daily_mean_drhodx = np.nanmean(mean_drhodx[t_dswt])
         daily_min_drhodx = np.nanmin(mean_drhodx[t_dswt])
+        f_dswt = f_dswt / len(transect_ds.ocean_time)
         
         x_dswt_all = np.where(daily_transport_dswt != 0)[0]
         
-        return (t_dswt, daily_mean_vel_dswt[x_dswt_all], daily_mean_thickness_dswt[x_dswt_all], daily_transport_dswt[x_dswt_all],
-                transect_ds.distance.values[x_dswt_all], transect_ds.lon_rho.values[x_dswt_all], transect_ds.lat_rho.values[x_dswt_all],
-                transect_ds.h.values[x_dswt_all], daily_mean_drhodx, daily_min_drhodx, daily_mean_drho_s[x_dswt_all], daily_min_drho_s[x_dswt_all])
+        return (f_dswt[x_dswt_all], daily_mean_vel_dswt[x_dswt_all], daily_mean_thickness_dswt[x_dswt_all],
+                daily_transport_dswt[x_dswt_all], transect_ds.distance.values[x_dswt_all],
+                transect_ds.lon_rho.values[x_dswt_all], transect_ds.lat_rho.values[x_dswt_all],
+                transect_ds.h.values[x_dswt_all], daily_mean_drhodx, daily_min_drhodx,
+                daily_mean_drho_s[x_dswt_all], daily_min_drho_s[x_dswt_all])
         
-    return (np.array([]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
+    return (np.array([0]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
             np.array([np.nan]), np.nan, np.nan, np.array([np.nan]), np.array([np.nan]))
 
 
@@ -117,14 +122,13 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
         xi = transects[transect_name]['xi']
         
         transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
-        (t_dswt, vel, thickness, transport, distance, lon, lat, h, drhodx_mean, drhodx_min, drhos_mean, drhos_min) = determine_dswt_along_transect(transect_ds, config)
-        f_dswt = len(t_dswt) / len(transect_ds.ocean_time)
+        (f_dswt, vel, thickness, transport, distance, lon, lat, h, drhodx_mean, drhodx_min, drhos_mean, drhos_min) = determine_dswt_along_transect(transect_ds, config)
         
         for j in range(len(transport)):
-            df_transects_dswt.loc[row] = [time, transect_name, f_dswt,
+            df_transects_dswt.loc[row] = [time, transect_name, f_dswt[j],
                                           vel[j], thickness[j], transport[j],
                                           distance[j], lon[j], lat[j], h[j],
-                                          drhodx_mean[j], drhodx_min[j], drhos_mean[j], drhos_min[j]]
+                                          drhodx_mean, drhodx_min, drhos_mean[j], drhos_min[j]]
             row += 1
         
     return df_transects_dswt

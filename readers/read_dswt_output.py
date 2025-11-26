@@ -95,7 +95,7 @@ def read_dswt_transport(input_dir:str, years:list, grid_file:str) -> tuple:
     lat = grid_ds.lat_rho.values
     h = grid_ds.h.values
     
-    df_total = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport_dswt', 'size', 'dz_mean', 'ds_max'])
+    df_total = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'size', 'mean_thickness', 'max_distance'])
     
     for i in range(len(years)):
         input_path = f'{input_dir}dswt_{years[i]}.csv'
@@ -103,16 +103,16 @@ def read_dswt_transport(input_dir:str, years:list, grid_file:str) -> tuple:
             continue
         
         df = pd.read_csv(input_path)
-        df = df.drop(df[np.isnan(df['transport_dswt'])].index)
+        df = df.drop(df[np.isnan(df['transport'])].index)
         df['time'] = pd.to_datetime(df['time'])
-        eta, xi = get_eta_xi_of_lon_lat_point(lon, lat, df['lon_transport'].values, df['lat_transport'].values)
+        eta, xi = get_eta_xi_of_lon_lat_point(lon, lat, df['lon'].values, df['lat'].values)
         df['eta'] = eta
         df['xi'] = xi
         df_daily_transport_per_loc = df.groupby(['time', 'eta', 'xi']).agg(
-            transport_dswt=('transport_dswt', 'mean'),
-            size=('transport_dswt', 'size'),
-            dz_mean=('dz_dswt', 'mean'),
-            ds_max=('ds', 'max')).reset_index()
+            transport=('transport', 'mean'),
+            size=('transport', 'size'),
+            mean_thickness=('thickness', 'mean'),
+            max_distance=('distance', 'max')).reset_index()
 
         df_total = pd.concat([df_total, df_daily_transport_per_loc])
         
@@ -123,11 +123,11 @@ def read_dswt_transport(input_dir:str, years:list, grid_file:str) -> tuple:
 def get_transport_map(df_transport:pd.DataFrame,
                       l_time:np.ndarray[bool],
                       map_shape:list[int]):
-    df_map = df_transport[l_time].groupby(['coords']).agg(transport_dswt=('transport_dswt', 'mean'))
+    df_map = df_transport[l_time].groupby(['coords']).agg(transport=('transport', 'mean'))
     
     transport_map = np.empty(map_shape)*np.nan
     for i in range(len(df_map)):
-        transport_map[df_map.index.values[i]] = df_map['transport_dswt'].values[i]
+        transport_map[df_map.index.values[i]] = df_map['transport'].values[i]
         
     return transport_map
 
@@ -211,7 +211,7 @@ def calculate_transport_across_contour(df_transport:pd.DataFrame,
     
     # daily transport across contour
     df_contour['dx'] = dx_for_in_df
-    df_contour['transport_m3'] = df_contour['transport_dswt'].values * df_contour['dx'].values
+    df_contour['transport_m3'] = df_contour['transport'].values * df_contour['dx'].values
     df_contour_daily = df_contour.groupby(['time']).agg(total_transport=('transport_m3', 'sum'))
     
     daily_transport = np.zeros(len(time))

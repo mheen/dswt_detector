@@ -1,11 +1,6 @@
+# Example to overwrite default values:
 [test]
-minimum_drhodz = 0.02
-
-[cwa]
-minimum_drhodz = 0.02
-
-[ozroms-daily]
-minimum_drhodz = 0.01
+drhodz_depth_percentage = 0.3
 
 [DEFAULT]
 # --- for transect creation ---
@@ -15,13 +10,11 @@ max_distance_contours = 100000.0 # in m, max distance at which next contour line
 
 # --- for dswt detection ---
 drhodz_depth_percentage = 0.3
-minimum_percentage_consecutive_cells = 0.1
 filter_depth = 100.0
-dswt_cross_shelf_transport_depth_range = [50.0, 60.0]
-# minimum_drhodz NO DEFAULT
+# dswt_cross_shelf_transport_depth_range = [50.0, 60.0] # redundant?
 
-# --- for transport calculation (optional) ---
-cross_shelf_transport_depth = 55.0
-cross_shelf_bottom_layers_percentage = 0.15
-cross_shelf_surface_layers_percentage = 0.15
-cross_shelf_interior_layers_percentage = 0.7 # remaining after surface and bottom
+# # --- for transport calculation (optional) --- redundant?
+# cross_shelf_transport_depth = 55.0
+# cross_shelf_bottom_layers_percentage = 0.15
+# cross_shelf_surface_layers_percentage = 0.15
+# cross_shelf_interior_layers_percentage = 0.7 # remaining after surface and bottom

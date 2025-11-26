@@ -1,12 +1,6 @@
 from transects import generate_transects_json_file, read_transects_in_lon_lat_range_from_json
 from guis.transect_removal import interactive_transect_removal
 from guis.transect_addition import interactive_transect_addition, write_added_transect_keys_to_file
-from guis.check_dswt_config import interactive_transect_time_cycling_plot
-
-from performance_tests.manual_random_checks import manual_performance_checks
-from performance_tests.rate_performance import check_performance, recheck_differences
-
-from processing import process_dswt_output
 
 from readers.read_ocean_data import load_roms_data, select_input_files
 from readers.read_dswt_output import get_domain_str, read_dswt_occurrence_timeseries, read_dswt_transport, calculate_transport_across_contour
@@ -144,45 +138,15 @@ ds_roms = None
 # --------------------------------------------------------
 # 3. Determine config parameters
 # --------------------------------------------------------
+# redundant code: using relative values, but potentially
+# print config parameters used now?
+# depth filter and depth percentage
 
-print_config(config)
-bool_str = input('Would you like to check these settings? y/n: ')
-if bool_str.lower().startswith('y'):
-    interactive_transect_time_cycling_plot(model_input_dir, grid_file, transects, config)
-else:
-    log.info('Continuing with DSWT detection with current config.')
-
-# --------------------------------------------------------
-# 4. Performance check
-# --------------------------------------------------------
-performance_file = f'performance_tests/output/{model}_{performance_year}_performance_comparison.csv'
-diff_file = f'performance_tests/output/{model}_{performance_year}_performance_differences.csv'
-
-def _check():
-    _, _ = check_performance(performance_file, diff_file)
-    bool_str = input('Do you want to recheck differences? y/n: ')
-    if bool_str.lower().startswith('y'):
-        recheck_differences(f'{model_input_dir}{performance_year}/', grid_file, transects,
-                            performance_file, diff_file)
-
-if os.path.exists(performance_file):
-    _check()      
-else:
-    bool_check = input('No manual performance comparison exists yet. Would you like to run this? y/n: ')
-    if bool_check.lower().startswith('y'):
-        n_files = int(input('How many files do you want to check?'))
-        n_transects_per_file = int(input('How many transects per file?'))
-        n_times_to_check = int(input('How many times per transect per file?'))
-        manual_performance_checks(f'{model_input_dir}{performance_year}/', grid_file, model, performance_year,
-                                    transects, None, n_files, n_transects_per_file, n_times_to_check,
-                                    performance_file)
-        _check()
-    else:
-        log.info('''You can run performance checks using "performance_tests/manual_random_checks"
-                    and "performance_tests/rate_performance" if you want to do this later.''')
+# maybe also print how performance checks can be done:
+# I think this should be a fully separate thing now though
 
 # --------------------------------------------------------
-# 5. Detect DSWT & cross-shelf DSWT transport
+# 4. Detect DSWT & cross-shelf DSWT transport
 # --------------------------------------------------------
 log.info('''----------------------------------------------
                Detecting DSWT
@@ -219,40 +183,6 @@ for year in years:
             df_transects_dswt.to_csv(output_dswt, mode='a', header=False, index=False)
         else:
             df_transects_dswt.to_csv(output_dswt, index=False)
-
-# --------------------------------------------------------
-# 6. Process DSWT output
-# --------------------------------------------------------
-# The DSWT detection algorithm has some faulty detections of DSWT.
-# These cases are removed here as a processing step. Ideally the
-# algorithm would be improved and this would be incorporated in
-# the detection, rather than as a processing step.
-# For now however, I am solving these faulty detections in processing.
-#
-# Make sure that this part of the script has run to not get unexpected
-# results (mainly in the cross-shelf transport calculations, the effect
-# on the occurrence detections seems minimal)!
-# You can also run these function from the processing script directly.
-
-log.info('''--------------------------------------------------
-            Processing DSWT output (removing faulty transport)
-            --------------------------------------------------''')
-
-create_dir_if_does_not_exist(f'{output_dir}processed/')
-
-for year in years:
-    log.info(f'Processing DSWT for {year}')
-    output_dswt = f'{output_dir}dswt_{year}.csv'
-    
-    if os.path.exists(output_dswt):
-        df = pd.read_csv(output_dswt)
-        if os.path.exists(islands_file):
-            island_transects = pd.read_csv(islands_file)['added_transects'].values
-        else:
-            island_transects = None
-        
-        processed_output_path = f'{output_dir}processed/dswt_{year}.csv'
-        process_dswt_output(df, processed_output_path, island_transects)
 
 # --------------------------------------------------------
 # Output: timeseries and maps analyses and plots
