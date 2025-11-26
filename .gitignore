@@ -12,6 +12,7 @@
 !tests/data/*.nc
 !tests/data/2017/*.nc
 !plots/test_*.jpg
+!validation/input/glider_transects.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
