@@ -126,9 +126,9 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
         
         for j in range(len(transport)):
             df_transects_dswt.loc[row] = [time, transect_name, f_dswt[j],
-                                          vel[j], thickness[j], transport[j],
-                                          distance[j], lon[j], lat[j], h[j],
-                                          drhodx_mean, drhodx_min, drhos_mean[j], drhos_min[j]]
+                                        vel[j], thickness[j], transport[j],
+                                        distance[j], lon[j], lat[j], h[j],
+                                        drhodx_mean, drhodx_min, drhos_mean[j], drhos_min[j]]
             row += 1
         
     return df_transects_dswt

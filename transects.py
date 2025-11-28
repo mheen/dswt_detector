@@ -219,6 +219,28 @@ def find_transect_points_perpendicular_to_contours(lon_p:float, lat_p:float,
 
     return np.array(lons), np.array(lats)
 
+def convert_original_transect_points_to_ocean_model(lons_org:np.ndarray, lats_org:np.ndarray, ds_grid:xr.Dataset, ds:float):
+    # --- get transect points in ocean model
+    # interpolate along transect line to higher resolution points
+    transect = shapely.LineString(list(zip(lons_org, lats_org)))
+    point_distances = np.arange(0, transect.length, ds/4)
+    transect_interp = shapely.LineString([transect.interpolate(distance) for distance in point_distances] + [transect.boundary.geoms[1]])
+    x, y = transect_interp.coords.xy
+    
+    # get eta, xi indices in ocean model
+    eta_all, xi_all = get_eta_xi_of_lon_lat_point(ds_grid.lon_rho.values, ds_grid.lat_rho.values, x, y)
+    coords = list(zip(eta_all, xi_all))
+    unique_coords = list(dict.fromkeys(coords))
+    unique_coords_list = list(zip(*unique_coords))
+    etas = unique_coords_list[0]
+    xis = unique_coords_list[1]
+    
+    # get lon, lat in ocean model
+    lons = ds_grid.lon_rho.values[etas, xis]
+    lats = ds_grid.lat_rho.values[etas, xis]
+    
+    return etas, xis, lons, lats
+
 def find_transects_from_starting_points(ds_grid:xr.Dataset, contours:list[shapely.LineString],
                                         lon_ps:np.ndarray[float], lat_ps:np.ndarray[float],
                                         ds:float, config:Config, start_index=0):
@@ -251,24 +273,7 @@ def find_transects_from_starting_points(ds_grid:xr.Dataset, contours:list[shapel
             log.info(f'Transect {i} not found for shelf point: {lon_ps[i], lat_ps[i]}')
             continue
         
-        # --- get transect points in ocean model
-        # interpolate along transect line to higher resolution points
-        transect = shapely.LineString(list(zip(lons_org, lats_org)))
-        point_distances = np.arange(0, transect.length, ds/4)
-        transect_interp = shapely.LineString([transect.interpolate(distance) for distance in point_distances] + [transect.boundary.geoms[1]])
-        x, y = transect_interp.coords.xy
-        
-        # get eta, xi indices in ocean model
-        eta_all, xi_all = get_eta_xi_of_lon_lat_point(ds_grid.lon_rho.values, ds_grid.lat_rho.values, x, y)
-        coords = list(zip(eta_all, xi_all))
-        unique_coords = list(dict.fromkeys(coords))
-        unique_coords_list = list(zip(*unique_coords))
-        etas = unique_coords_list[0]
-        xis = unique_coords_list[1]
-        
-        # get lon, lat in ocean model
-        lons = ds_grid.lon_rho.values[etas, xis]
-        lats = ds_grid.lat_rho.values[etas, xis]
+        etas, xis, lons, lats = convert_original_transect_points_to_ocean_model(lons_org, lats_org, ds_grid, ds)
         
         transects[f't{start_index+i}'] = {'lon_org': list(lons_org), 'lat_org': list(lats_org),
                               'eta': [int(eta) for eta in etas], 'xi': [int(xi) for xi in xis],

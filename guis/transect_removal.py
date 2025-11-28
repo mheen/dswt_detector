@@ -202,11 +202,11 @@ def interactive_transect_removal(transects_file:str, grid_ds:xr.Dataset, config:
     return removed_transects_bool
 
 if __name__ == '__main__':
-    transects_file = 'input/transects/cwa_transects.json'
+    transects_file = 'input/transects/test_transects.json'
     
-    grid_file = f'{get_dir_from_json("cwa")}grid.nc'
+    grid_file = f'{get_dir_from_json("test_data", json_file="input/example_dirs.json")}grid.nc'
     grid_ds = xr.load_dataset(grid_file)
     
-    config = read_config('cwa')
+    config = read_config('test')
     
     interactive_transect_removal(transects_file, grid_ds, config)

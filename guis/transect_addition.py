@@ -4,8 +4,11 @@ sys.path.insert(1, parent)
 
 from guis.transect_removal import map_with_land_and_contours, convert_land_mask_to_polygons
 from tools.config import Config, read_config
+from tools.coordinates import get_bearing_between_points
+from tools.roms import get_eta_xi_of_lon_lat_point
 from transects import read_transects_dict_from_json
 from transects import get_depth_contours, get_starting_points, find_transects_from_starting_points
+from transects import create_line_at_angle_to_point, get_intersection_point_between_lines, convert_original_transect_points_to_ocean_model
 from tools.files import get_dir_from_json
 from tools import log
 
@@ -181,6 +184,32 @@ def add_transects(add_polygon:shapely.Polygon, i_start_contour:int,
     new_transects = find_transects_from_starting_points(ds_grid, contours, lon_ps, lat_ps, ds, config,
                                                         start_index=transect_keys[-1]+1)
     
+    # if transects start less shallow than others: add a shallow point
+    # (needed for MLD condition to detect DSWT)
+    if i_start_contour != 0:
+        contour0 = get_depth_contours(ds_grid.lon_rho.values,
+                                      ds_grid.lat_rho.values,
+                                      ds_grid.h.values,
+                                      [config.transect_contours[0]])[0]
+        for transect in new_transects:
+            lon1 = new_transects[transect]['lon_org'][0]
+            lat1 = new_transects[transect]['lat_org'][0]
+            bearing = get_bearing_between_points(lon1, lat1, new_transects[transect]['lon_org'][-1], new_transects[transect]['lat_org'][-1])
+            line = create_line_at_angle_to_point(lon1, lat1, bearing, config)
+            lon0_org, lat0_org = get_intersection_point_between_lines(line, contour0, lon1, lat1)
+            
+            xi0, eta0 = get_eta_xi_of_lon_lat_point(ds_grid.lon_rho.values, ds_grid.lat_rho.values, lon0_org, lat0_org)
+            # something going wrong here, output should be eta0, xi0 but somehow seems reversed?
+            lon0 = ds_grid.lon_rho.values[eta0, xi0]
+            lat0 = ds_grid.lat_rho.values[eta0, xi0]
+            
+            new_transects[transect]['lon_org'].insert(0, float(lon0_org))
+            new_transects[transect]['lat_org'].insert(0, float(lat0_org))
+            new_transects[transect]['lon'].insert(0, float(lon0))
+            new_transects[transect]['lat'].insert(0, float(lat0))
+            new_transects[transect]['eta'].insert(0, int(eta0))
+            new_transects[transect]['xi'].insert(0, int(xi0))
+    
     if len(new_transects) != 0:
         added_transects_bool = True
         added_from_transect = transect_keys[-1]+1
@@ -235,9 +264,13 @@ if __name__ == '__main__':
     grid_file = f'{get_dir_from_json("test_data", json_file="input/example_dirs.json")}grid.nc'
     grid_ds = xr.load_dataset(grid_file)
     
-    config = read_config('cwa')
+    config = read_config('test')
     
-    added_transects_bool, added_from_index = interactive_transect_addition(transects_file, grid_ds, config)
+    # added_transects_bool, added_from_index = interactive_transect_addition(transects_file, grid_ds, config)
+    poly_lons = [np.float64(115.21311269375786), np.float64(115.72438206954337), np.float64(115.68931713447843), np.float64(115.26514453288648)]
+    poly_lats = [np.float64(-31.91602429828236), np.float64(-31.90810640971931), np.float64(-32.06193967322999), np.float64(-32.08682446585672)]
+    add_polygon = shapely.Polygon(list(zip(poly_lons, poly_lats)))
+    added_transects_bool, added_from_index = add_transects(add_polygon, 3, grid_ds, config, transects_file)
     
     if added_transects_bool == True:
         write_added_transect_keys_to_file(transects_file, added_from_index, islands_file)
