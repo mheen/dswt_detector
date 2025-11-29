@@ -10,6 +10,7 @@ import cartopy.crs as ccrs
 import numpy as np
 from datetime import datetime
 import pandas as pd
+import xarray as xr
 
 color_dswt = '#25419e'
 color_transport = '#0e6e22'
@@ -21,12 +22,15 @@ lat_range_default = [-33., -31.]
 meridians_default = [115., 116.]
 parallels_default = [-33., -32., -31.]
 
-def plot_dswt_timeseries(time:np.ndarray[datetime],
-                         f_dswt:np.ndarray[float],
-                         transport_contour:np.ndarray[float],
+def plot_dswt_timeseries(df_timeseries:pd.DataFrame,
+                         depth_contour:float,
                          years:list[int],
                          output_path=None,
                          show=True):
+    
+    time = np.array([pd.to_datetime(t) for t in df_timeseries['time'].values])
+    f_dswt = df_timeseries['f_dswt'].values
+    transport_contour = df_timeseries[f'transport_{str(int(depth_contour))}m']
     
     xlim = [time[0], time[-1]]
     
@@ -69,18 +73,15 @@ def plot_dswt_timeseries(time:np.ndarray[datetime],
     else:
         plt.close()
     
-def plot_dswt_map(time:np.ndarray[datetime],
-                  df_transport:pd.DataFrame,
-                  lon:np.ndarray[float],
-                  lat:np.ndarray[float],
-                  h:np.ndarray[float],
+def plot_dswt_map(df_transport:pd.DataFrame,
+                  grid_ds:xr.Dataset,
                   output_path=None,
                   show=True):
     # DSWT map
     l_time = np.ones(len(df_transport)).astype(bool) # mean map over all times
-    transport_overall = get_transport_map(df_transport, l_time, lon.shape)
+    transport_overall = get_transport_map(df_transport, l_time, grid_ds.lon_rho.shape)
     
-    l_mask = h > 100.
+    l_mask = grid_ds.h.values > 100.
     transport_overall[l_mask] = np.nan
     
     fig = plt.figure(figsize=(6, 5))
@@ -88,18 +89,18 @@ def plot_dswt_map(time:np.ndarray[datetime],
     
     plot_basic_map(ax, lon_range_default, lat_range_default,
                    meridians_default, parallels_default, full_resolution=False)
-    plot_contours(lon, lat, h,
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
                   lon_range_default, lat_range_default,
                   ax=ax, show=False, color='w',
                   clevels=[25, 50, 100, 200],
                   linewidths=[2.0, 4.0, 2.0, 2.0])
-    plot_contours(lon, lat, h,
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
                   lon_range_default, lat_range_default,
                   ax=ax, show=False,
                   clevels=[25, 50, 100, 200],
                   linewidths=[1.0, 2.0, 1.0, 1.0])
     
-    c = ax.pcolormesh(lon, lat, transport_overall/(24*60*60), cmap='viridis')
+    c = ax.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, transport_overall/(24*60*60), cmap='viridis')
     add_subtitle(ax, 'Mean DSWT transport')
     
     # colorbar
@@ -123,16 +124,11 @@ if __name__ == '__main__':
     depth_contour = 50
     
     time, f_dswt = read_dswt_occurrence_timeseries(dswt_output_dir, years)
+    grid_ds = xr.load_dataset(grid_file)
     
-    lon, lat, h, df_transport, dx = read_dswt_transport(dswt_output_dir, years, grid_file)
-    time, transport_contour, depth_contour, contour_length = calculate_transport_across_contour(df_transport,
-                                                                                              lon,
-                                                                                              lat,
-                                                                                              h,
-                                                                                              dx,
-                                                                                              lon_range_default,
-                                                                                              lat_range_default,
-                                                                                              depth_contour,
-                                                                                              dx_method='roms')
+    df_transport = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'mean_thickness', 'max_distance'])
+    df_timeseries = pd.DataFrame(columns=['time', 'f_dswt', f'transport_{str(int(depth_contour))}m'])
 
-    plot_dswt_timeseries(time, f_dswt, transport_contour, years, output_path='plots/test_timeseries.jpg')
+
+    plot_dswt_timeseries(df_timeseries, depth_contour, years, output_path='plots/test_timeseries.jpg')
+    plot_dswt_map(df_transport, grid_ds, output_path='plots/test_map.jpg')
