@@ -4,6 +4,7 @@ sys.path.insert(1, parent)
 
 from tools.roms import get_eta_xi_of_lon_lat_point
 from tools.coordinates import get_distance_between_points
+from tools.files import get_dir_from_json
 from tools import log
 
 from datetime import datetime, timedelta
@@ -73,7 +74,7 @@ def read_dswt_occurrence_timeseries(input_dir:str, years:list) -> tuple[np.ndarr
         
     return time, f_dswt
 
-def read_dswt_transport(input_dir:str, years:list, grid_file:str) -> tuple:
+def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> tuple:
     '''Reads DSWT detection output from multiple files for multiple years (if needed) and determines the daily
     cross-shelf transport associated with DSWT occurrence. Transport values are returned as both
     a function of time and location.
@@ -88,12 +89,8 @@ def read_dswt_transport(input_dir:str, years:list, grid_file:str) -> tuple:
     - time: numpy datetime array
     - f_dswt: fraction of DSWT occurrence'''
     
-    grid_ds = xr.load_dataset(grid_file)
-    dx = np.sqrt(1/grid_ds.pm.values*1/grid_ds.pn.values)
-    
     lon = grid_ds.lon_rho.values
     lat = grid_ds.lat_rho.values
-    h = grid_ds.h.values
     
     df_total = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'size', 'mean_thickness', 'max_distance'])
     
@@ -110,20 +107,17 @@ def read_dswt_transport(input_dir:str, years:list, grid_file:str) -> tuple:
         df['xi'] = xi
         df_daily_transport_per_loc = df.groupby(['time', 'eta', 'xi']).agg(
             transport=('transport', 'mean'),
-            size=('transport', 'size'),
             mean_thickness=('thickness', 'mean'),
             max_distance=('distance', 'max')).reset_index()
 
         df_total = pd.concat([df_total, df_daily_transport_per_loc])
-        
-    df_total['coords'] = list(zip(df_total['eta'], df_total['xi']))
             
-    return lon, lat, h, df_total, dx
+    return df_total
 
 def get_transport_map(df_transport:pd.DataFrame,
                       l_time:np.ndarray[bool],
                       map_shape:list[int]):
-    df_map = df_transport[l_time].groupby(['coords']).agg(transport=('transport', 'mean'))
+    df_map = df_transport[l_time].groupby(['eta', 'xi']).agg(transport=('transport', 'mean'))
     
     transport_map = np.empty(map_shape)*np.nan
     for i in range(len(df_map)):
@@ -132,24 +126,24 @@ def get_transport_map(df_transport:pd.DataFrame,
     return transport_map
 
 def calculate_transport_across_contour(df_transport:pd.DataFrame,
-                                       lon_grid:np.ndarray,
-                                       lat_grid:np.ndarray,
-                                       h:np.ndarray,
-                                       dx:np.ndarray,
+                                       grid_ds:xr.Dataset,
                                        lon_range:list,
                                        lat_range:list,
                                        depth_contour:float,
                                        dx_method='roms'):
+    
+    dx = np.sqrt(1/grid_ds.pm.values*1/grid_ds.pn.values)
+    
     # get contour coordinates
-    l_lon = np.logical_and(lon_grid >= lon_range[0], lon_grid <= lon_range[1])
-    l_lat = np.logical_and(lat_grid >= lat_range[0], lat_grid <= lat_range[1])
+    l_lon = np.logical_and(grid_ds.lon_rho.values >= lon_range[0], grid_ds.lon_rho.values <= lon_range[1])
+    l_lat = np.logical_and(grid_ds.lat_rho.values >= lat_range[0], grid_ds.lat_rho.values <= lat_range[1])
     l_range = np.logical_and(l_lon, l_lat)
     
-    h_wcs = np.copy(h)
-    h_wcs[~l_range] = np.nan
+    h = np.copy(grid_ds.h.values)
+    h[~l_range] = np.nan
     
     ax = plt.axes()
-    cs = ax.contour(lon_grid, lat_grid, h_wcs, levels=[depth_contour])
+    cs = ax.contour(grid_ds.lon_rho.values, grid_ds.lat_rho.values, h, levels=[depth_contour])
     vertices = cs.get_paths()[0].vertices
     lon = np.array([coords[0] for coords in vertices])
     lat = np.array([coords[1] for coords in vertices])
@@ -160,7 +154,7 @@ def calculate_transport_across_contour(df_transport:pd.DataFrame,
     for i in range(len(lon)-1):
         contour_length += get_distance_between_points(lon[i], lat[i], lon[i+1], lat[i+1])
     
-    eta, xi = get_eta_xi_of_lon_lat_point(lon_grid, lat_grid, lon, lat)
+    eta, xi = get_eta_xi_of_lon_lat_point(grid_ds.lon_rho.values, grid_ds.lat_rho.values, lon, lat)
     contour_coords = list(zip(eta, xi))
     contour_coords, i_unique = np.unique(contour_coords, axis=0, return_index=True) # remove double coordinates
     i_sort = np.argsort(i_unique)
@@ -189,12 +183,11 @@ def calculate_transport_across_contour(df_transport:pd.DataFrame,
         raise ValueError(f'Unknown dx method: {dx_method}. Valid options are "roms" or "coords".')
     
     # df along contour
-    coords = df_transport['coords'].values
     l_contour = []
     dx_for_in_df = []
-    for i in range(len(coords)):
-        l_eta = np.isin(contour_coords[:, 0], coords[i][0])
-        l_xi = np.isin(contour_coords[:, 1], coords[i][1])
+    for i in range(len(df_transport)):
+        l_eta = np.isin(contour_coords[:, 0], df_transport['eta'].values[i])
+        l_xi = np.isin(contour_coords[:, 1], df_transport['xi'].values[i])
         l_eta_xi = np.logical_and(l_eta, l_xi)
         l_on_contour = np.any(l_eta_xi)
         l_contour.append(l_on_contour)
@@ -202,6 +195,7 @@ def calculate_transport_across_contour(df_transport:pd.DataFrame,
             i_coord = np.where(l_eta_xi)[0][0]
             dx_for_in_df.append(dx[i_coord])
 
+    l_contour = np.array(l_contour).astype(bool)
     df_contour = df_transport[l_contour]
     df_contour['time'] = pd.to_datetime(df_contour['time'].values)
     
@@ -219,11 +213,14 @@ def calculate_transport_across_contour(df_transport:pd.DataFrame,
         i_time = np.where(df_contour_daily.index[t] == time)[0][0]
         daily_transport[i_time] = df_contour_daily['total_transport'].values[t] / contour_length
 
-    return time, daily_transport, depth_contour, contour_length
+    return time, daily_transport, contour_length
 
 if __name__ == '__main__':
     input_dir = 'output/test_114-116E_33-31S/'
     years = [2017]
     
-    time, f_dswt = read_dswt_occurrence_timeseries(input_dir, years)
-    len(time)
+    grid_file = f'{get_dir_from_json("test_data", json_file="input/example_dirs.json")}grid.nc'
+    
+    # lon, lat, h, df_total, dx = read_dswt_transport(input_dir, years, grid_file)
+    
+    # time, f_dswt = read_dswt_occurrence_timeseries(input_dir, years)

@@ -8,7 +8,7 @@ from tools.coordinates import get_bearing_between_points
 from tools.roms import get_eta_xi_of_lon_lat_point
 from transects import read_transects_dict_from_json
 from transects import get_depth_contours, get_starting_points, find_transects_from_starting_points
-from transects import create_line_at_angle_to_point, get_intersection_point_between_lines, convert_original_transect_points_to_ocean_model
+from transects import create_line_at_angle_to_point, get_intersection_point_between_lines
 from tools.files import get_dir_from_json
 from tools import log
 
