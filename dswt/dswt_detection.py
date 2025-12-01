@@ -34,7 +34,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
     # condition 1: mixed layer depth must reach the seafloor at the coast
     if mld_condition == True:
         i_coast = np.where(~np.isnan(transect_ds.density.values))[2][0]
-        drho = transect_ds.density[:, -1, i_coast] - transect_ds.density[:, 0, i_coast] # s_rho[0] = bottom, s_rho[-1] = surface
+        drho = transect_ds.density.values[:, -1, i_coast] - transect_ds.density.values[:, 0, i_coast] # s_rho[0] = bottom, s_rho[-1] = surface
         mld_condition = abs(drho) / RHO0 < 10**-4 # mld_condition : [ocean_time]
     else:
         mld_condition = np.ones(len(transect_ds.ocean_time)).astype(bool)
@@ -57,13 +57,14 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
         # condition 4: down slope velocity needs to be positive (offshore/down-slope)
         u_down_condition = transect_ds.u_down.values > 0. # u_down_condition: [ocean_time, s_rho, distance]
         
-        l_dswt = np.logical_and(drho_s_condition[l_time_dswt_possible, :, :], u_down_condition[l_time_dswt_possible, :, :])
+        l_dswt = np.logical_and(drho_s_condition, u_down_condition)
+        l_dswt[~l_time_dswt_possible, :, :] = False
         
         all_transport = transect_ds.u_down.values * transect_ds.delta_z.values * transect_ds.dt.values
         
         t_dswt = np.unique(np.where(l_dswt == True)[0])
         if len(t_dswt) == 0:
-            return (np.array([0]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
+            return (np.array([]), np.array([0]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
             np.array([np.nan]), np.nan, np.nan, np.array([np.nan]), np.array([np.nan]))
         
         transport_dswt = np.zeros((len(transect_ds.ocean_time), len(transect_ds.distance)))
@@ -96,13 +97,13 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
         
         x_dswt_all = np.where(daily_transport_dswt != 0)[0]
         
-        return (f_dswt[x_dswt_all], daily_mean_vel_dswt[x_dswt_all], daily_mean_thickness_dswt[x_dswt_all],
+        return (t_dswt, f_dswt[x_dswt_all], daily_mean_vel_dswt[x_dswt_all], daily_mean_thickness_dswt[x_dswt_all],
                 daily_transport_dswt[x_dswt_all], transect_ds.distance.values[x_dswt_all],
                 transect_ds.lon_rho.values[x_dswt_all], transect_ds.lat_rho.values[x_dswt_all],
                 transect_ds.h.values[x_dswt_all], daily_mean_drhodx, daily_min_drhodx,
                 daily_mean_drho_s[x_dswt_all], daily_min_drho_s[x_dswt_all])
         
-    return (np.array([0]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
+    return (np.array([]), np.array([0]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
             np.array([np.nan]), np.nan, np.nan, np.array([np.nan]), np.array([np.nan]))
 
 
@@ -122,7 +123,7 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
         xi = transects[transect_name]['xi']
         
         transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
-        (f_dswt, vel, thickness, transport, distance, lon, lat, h, drhodx_mean, drhodx_min, drhos_mean, drhos_min) = determine_dswt_along_transect(transect_ds, config)
+        (t_dswt, f_dswt, vel, thickness, transport, distance, lon, lat, h, drhodx_mean, drhodx_min, drhos_mean, drhos_min) = determine_dswt_along_transect(transect_ds, config)
         
         for j in range(len(transport)):
             df_transects_dswt.loc[row] = [time, transect_name, f_dswt[j],

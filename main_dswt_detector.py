@@ -13,7 +13,7 @@ from tools.config import Config, read_config
 from tools import log
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
 
-from scipy.interpolate import LinearNDInterpolator, CloughTocher2DInterpolator
+from scipy.interpolate import LinearNDInterpolator
 import os
 import numpy as np
 from datetime import datetime, timedelta
@@ -192,7 +192,7 @@ for year in years:
             df_transects_dswt.to_csv(output_dswt, index=False)
 
 # --------------------------------------------------------
-# Processing (spatial interpolation if desired)
+# 5. Processing (spatial interpolation if desired)
 # --------------------------------------------------------
 log.info('''--------------------------------------------------
                          Processing output

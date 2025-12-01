@@ -73,7 +73,7 @@ def compare_glider_model_dswt_detection(glider_dir=get_dir_from_json('glider_tra
         
         (glider_vel, glider_thickness, glider_transport, glider_distance, _, _, glider_h, 
         glider_drhodx, glider_mean_drhos,  glider_min_drhos) = determine_dswt_along_glider_transect(glider_transect_ds, config)
-        (t_dswt, vel, thickness, transport, distance, _, _, h, mean_drhodx, min_drhodx, mean_drhos, min_drhos) = determine_dswt_along_transect(transect_ds, config, mld_condition=False)
+        (t_dswt, _, vel, thickness, transport, distance, _, _, h, mean_drhodx, min_drhodx, mean_drhos, min_drhos) = determine_dswt_along_transect(transect_ds, config, mld_condition=False)
         
         plot_comparison(glider_transect_ds, transect_ds, transect_name, glider_distance, -glider_h + glider_thickness,
                         distance, -h + thickness, t_dswt)
@@ -253,6 +253,6 @@ def plot_glider_model_comparison_measures(input_path='validation/output/comparis
     
 
 if __name__ == '__main__':
-    # compare_glider_model_dswt_detection()
+    compare_glider_model_dswt_detection()
     plot_glider_model_comparison_measures()
     
