@@ -8,7 +8,6 @@
 !input/example_dirs.json
 !input/transects/*_transects.json
 !input/transects/*_transects_islands.csv
-!performance_tests/output/*_performance_comparison.csv
 !tests/data/*.nc
 !tests/data/2017/*.nc
 !plots/test_*.jpg
