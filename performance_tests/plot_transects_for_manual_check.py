@@ -9,14 +9,28 @@ cmap_density = cm.cm.thermal_r
 cmap_temp = 'RdYlBu_r'
 cmap_salt = cm.cm.haline
 
-def _get_min_max(values, buffer_min=0.05, buffer_max=0.2):
+def _get_vmin_vmax(values:np.ndarray[float]):
     min_value = np.nanmin(values)
     max_value = np.nanmax(values)
-    dvalue = max_value-min_value
-    return min_value+buffer_min*dvalue, max_value-buffer_max*dvalue
+    dvalue = max_value - min_value
+    
+    dbin = dvalue/20
+    
+    bins = np.arange(min_value, max_value + dbin, dbin)
+    
+    bin_edges = np.empty(len(bins)+1)
+    bin_edges[:-1] = bins - dbin/2
+    bin_edges[-1] = bins[-1] + dbin/2
+    
+    n, _ = np.histogram(values[~np.isnan(values)], bins=bin_edges)
+    bins_most_values = bins[n >= 0.2 * np.nanmax(n)]
+    
+    vmin = bins_most_values[0]
+    vmax = bins_most_values[-1]
+    return vmin, vmax
 
 def _plot_transect(transect_ds:xr.Dataset, ax:plt.axes, variable:str, t_dswt:int, cmap:str) -> tuple:
-    vmin, vmax = _get_min_max(transect_ds[variable][t_dswt, :, :])
+    vmin, vmax = _get_vmin_vmax(transect_ds[variable].values[t_dswt, :, :])
     
     c = transect_ds[variable][t_dswt, :, :].plot(x='distance', y='z_rho', vmin=vmin, vmax=vmax, cmap=cmap, add_colorbar=False)
     ax.fill_between(transect_ds.distance.values, -210, -transect_ds.h.values, color='#d2d2d2', edgecolor='k')

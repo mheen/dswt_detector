@@ -3,7 +3,7 @@ parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
 from tools.files import get_dir_from_json, create_dir_if_does_not_exist
-from tools.config import read_config
+from tools.config import Config
 from readers.read_ocean_data import load_roms_data, select_input_files, select_roms_transect_from_known_coordinates
 from transects import read_transects_in_lon_lat_range_from_json
 from dswt.dswt_detection import determine_dswt_along_transect
@@ -18,7 +18,7 @@ import numpy as np
 import os
 import glob
 
-def manual_performance_checks(input_dir:str, grid_file:str, model:str, year:int,
+def manual_performance_checks(input_dir:str, grid_file:str, config:Config, year:int,
                               transects:dict, focus_months:list[int],
                               n_files_to_check:int, n_transects_per_file_to_check:int, n_times_to_check:int,
                               output_file:str):
@@ -26,8 +26,6 @@ def manual_performance_checks(input_dir:str, grid_file:str, model:str, year:int,
     # Randomly select file and transect and get user DSWT
     # --------------------------------------------------------
     transect_names = list(transects.keys())
-
-    config = read_config(model)
 
     if focus_months is not None:
         input_files = []
@@ -37,10 +35,12 @@ def manual_performance_checks(input_dir:str, grid_file:str, model:str, year:int,
     else:
         input_files = select_input_files(input_dir)
 
+    selected_input_files = random.sample(input_files, n_files_to_check)
+    selected_transect_names = random.sample(transect_names, n_transects_per_file_to_check)
+
     for i in range(n_files_to_check):
-        input_path = random.choice(input_files)
-        filename = os.path.splitext(os.path.split(input_path)[1])[0]
-        roms_ds = load_roms_data(input_path, grid_file=grid_file)
+        filename = os.path.splitext(os.path.split(selected_input_files[i])[1])[0]
+        roms_ds = load_roms_data(selected_input_files[i], grid_file=grid_file)
         
         if len(roms_ds.ocean_time) == 1:
             n_times_to_check = 1
@@ -53,10 +53,11 @@ def manual_performance_checks(input_dir:str, grid_file:str, model:str, year:int,
                 t = random.choice(t_array)
                 
             t_previous = t
+
             time = pd.to_datetime(roms_ds.ocean_time.values[t]).strftime('%Y%m%d%H%M')
             
             for j in range(n_transects_per_file_to_check):
-                transect_name = random.choice(transect_names)
+                transect_name = selected_transect_names[j]
                 
                 # don't select transect again if it is already in the output file
                 if os.path.exists(output_file):
@@ -72,15 +73,18 @@ def manual_performance_checks(input_dir:str, grid_file:str, model:str, year:int,
                 transects_plot(transect_ds, t)
                 plt.show()
                 
-                manual_input = input('DSWT True/False (t/f): ')
-                manual_dswt = True if manual_input.lower().startswith('t') else False
-                l_dswt, condition1, condition2, drhodz_max, drhodz_cells = determine_dswt_along_transect(transect_ds, config)
+                manual_dswt = input('DSWT 0=False, 1=True, 0.5=Unsure: ')
+                transect_ds_t = transect_ds.isel(ocean_time=[t])
+                (t_dswt, f_dswt, vel, thickness, transport,
+                 distance, lon, lat, h, drhodx_mean, drhodx_min,
+                 drhos_mean, drhos_min) = determine_dswt_along_transect(transect_ds_t, config)
                 
-                data = np.array([filename, time, transect_name, manual_dswt, l_dswt[t],
-                                condition1[t], condition2[t], drhodz_max[t], drhodz_cells[t]])
+                data = np.array([filename, time, transect_name, manual_dswt, f_dswt[0],
+                                 np.nanmean(vel), np.nanmean(thickness), np.nanmean(transport),
+                                 drhodx_mean, np.nanmean(drhos_mean)])
                 df = pd.DataFrame(np.expand_dims(data, 0),
                                 columns=['filename', 'time', 'transect', 'manual_dswt', 'algorithm_dswt',
-                                        'negative_drhodx', 'drhodz_condition', 'drhodz_max', 'drhodz_p_cells'])
+                                         'vel', 'thickness', 'transport', 'drhodx', 'drho_s'])
 
                 # append to csv file immediately after input
                 if os.path.exists(output_file):
@@ -94,13 +98,13 @@ if __name__ == '__main__':
     # --------------------------------------------------------
     # User input
     # --------------------------------------------------------
-    n_files_to_check = 30
+    n_files_to_check = 10
     n_times_to_check = 2
     n_transects_per_file_to_check = 5
 
     year = 2017
     model = 'cwa'
-    focus_months = [5, 6, 7] # set to None for full year,
+    focus_months = None # set to None for full year,
     # allowing this option to focus more on DSWT times
     # rather than confirming obvious false values
 
