@@ -266,11 +266,7 @@ if __name__ == '__main__':
     
     config = read_config('test')
     
-    # added_transects_bool, added_from_index = interactive_transect_addition(transects_file, grid_ds, config)
-    poly_lons = [np.float64(115.21311269375786), np.float64(115.72438206954337), np.float64(115.68931713447843), np.float64(115.26514453288648)]
-    poly_lats = [np.float64(-31.91602429828236), np.float64(-31.90810640971931), np.float64(-32.06193967322999), np.float64(-32.08682446585672)]
-    add_polygon = shapely.Polygon(list(zip(poly_lons, poly_lats)))
-    added_transects_bool, added_from_index = add_transects(add_polygon, 3, grid_ds, config, transects_file)
+    added_transects_bool, added_from_index = interactive_transect_addition(transects_file, grid_ds, config)
     
     if added_transects_bool == True:
         write_added_transect_keys_to_file(transects_file, added_from_index, islands_file)
