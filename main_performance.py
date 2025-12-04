@@ -39,7 +39,7 @@ focus_months = None # set to None for full year,
 # rather than confirming obvious false values
 
 # option to be shown transects where manual and algorithm did not match again
-recheck = True
+recheck = False
 
 # --- Output files (no need to change)
 output_comparison = f'performance_tests/output/{model}_{year}_performance_comparison.csv'
@@ -67,5 +67,5 @@ if recheck == True:
 # --------------------------------------------------------
 # Plot performance
 # --------------------------------------------------------
-# plot_performance_summary(df, output_path=output_performance)
-# plot_monthly_performance(df, output_path=output_performance_monthly)
+plot_performance_summary(df, output_path=output_performance)
+plot_monthly_performance(df, output_path=output_performance_monthly)

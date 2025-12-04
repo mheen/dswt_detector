@@ -152,7 +152,7 @@ def plot_monthly_performance(df:pd.DataFrame, output_path=None, show=False):
     bottom = np.zeros(len(time_m))
     ax2.bar(time_m, transport_correct_m / y_scale, width, label='Correct', bottom=bottom, color='#25419e')
     bottom += transport_correct_m / y_scale
-    ax2.bar(time_m, transport_incorrect_m / y_scale, width, label='False positives', bottom=bottom, color='#900C3F')
+    ax2.bar(time_m, transport_incorrect_m / y_scale, width, label='Incorrect', bottom=bottom, color='#900C3F')
     bottom += transport_incorrect_m / y_scale
     ax2.bar(time_m, transport_uncertain_m / y_scale, width, label='Uncertain', bottom=bottom, color='#929292')
     
@@ -161,6 +161,8 @@ def plot_monthly_performance(df:pd.DataFrame, output_path=None, show=False):
     ax2.set_ylabel('Monthly transport (10$^4$ m$^2$ s$^{-1}$)')
     
     ax2.set_xlim([datetime(2017, 1, 1), datetime(2017, 12, 31)])
+    
+    ax2.legend(loc='upper left')
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
