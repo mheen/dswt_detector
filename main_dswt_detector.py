@@ -210,7 +210,7 @@ for year in years:
     if os.path.exists(output_transport):
         log.info(f'Processed transport file exists, skipping: {output_transport}')
     else:
-        df_transport = read_dswt_transport(output_dir, years, grid_ds)
+        df_transport = read_dswt_transport(output_dir, [year], grid_ds)
         
         if spatially_interpolate_results == True:
             warn(f'Spatial interpolation set to True, this may take a while... set to False if not needed.')
@@ -228,7 +228,7 @@ for year in years:
     else:
         df_transport = pd.read_csv(output_transport)
         # occurrence timeseries
-        time, f_dswt = read_dswt_occurrence_timeseries(output_dir, years)
+        time, f_dswt = read_dswt_occurrence_timeseries(output_dir, [year])
         # transport timeseries
         time, transport_contour, contour_length = calculate_transport_across_contour(df_transport,
                                                                                      grid_ds,

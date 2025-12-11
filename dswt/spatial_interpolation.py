@@ -23,6 +23,8 @@ def spatially_interpolate_dswt(df_transport:pd.DataFrame, interpolator, grid_ds:
     times = np.unique(df_transport['time'].values)
     for t in times:
         l_time = df_transport['time'].values == t
+        if np.sum(l_time) <= 4: # not enough points to interpolate
+            continue
         eta = df_transport[l_time]['eta'].values
         xi = df_transport[l_time]['xi'].values
         x = grid_ds.lon_rho.values[eta.astype(int), xi.astype(int)]
