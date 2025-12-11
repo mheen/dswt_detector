@@ -6,6 +6,7 @@ from performance_tests.plot_transects_for_manual_check import transects_plot
 from readers.read_ocean_data import select_input_files, load_roms_data, select_roms_transect_from_known_coordinates
 from transects import read_transects_in_lon_lat_range_from_json
 from tools.files import get_dir_from_json
+from plot_tools.general import add_subtitle
 from plot_tools.basic_timeseries import plot_monthly_histogram
 from tools.timeseries import get_monthly_sums, add_month_to_time
 from tools import log
@@ -27,18 +28,22 @@ def plot_performance_summary(df:pd.DataFrame, output_path=None, show=False):
     l_correct_no_dswt = algorithm_dswt[l_no_dswt] == 0
     n_correct_no_dswt = np.sum(l_correct_no_dswt)
     n_incorrect_no_dswt = np.sum(l_no_dswt) - n_correct_no_dswt
-    transport_incorrect_no_dswt = np.nansum(df['transport'].values[l_no_dswt][~l_correct_no_dswt])
+    transport_incorrect_no_dswt = df['transport'].values[l_no_dswt][~l_correct_no_dswt]
+    transport_incorrect_no_dswt_sum = np.nansum(transport_incorrect_no_dswt)
     
     l_correct_dswt = algorithm_dswt[l_dswt] == 1
     n_correct_dswt = np.sum(l_correct_dswt)
     n_incorrect_dswt = np.sum(l_dswt) - n_correct_dswt
-    transport_correct_dswt = np.nansum(df['transport'].values[l_dswt][l_correct_dswt])
+    transport_correct_dswt = df['transport'].values[l_dswt][l_correct_dswt]
+    transport_correct_dswt_sum = np.nansum(transport_correct_dswt)
     # transport incorrectly DSWT is zero (so not needed)
     
     l_uncertain_no_dswt = algorithm_dswt[l_uncertain] == 0
     l_uncertain_dswt = algorithm_dswt[l_uncertain] == 1
     n_uncertain = np.sum(l_uncertain)
-    transport_uncertain = np.nansum(df['transport'].values[l_uncertain])
+    transport_uncertain = df['transport'].values[l_uncertain]
+    transport_uncertain = transport_uncertain[~np.isnan(transport_uncertain)]
+    transport_uncertain_sum = np.nansum(transport_uncertain)
     
     # --- Summary plot
     fig = plt.figure(figsize=(10, 5))
@@ -46,15 +51,18 @@ def plot_performance_summary(df:pd.DataFrame, output_path=None, show=False):
     
     # number of detections
     ax1 = plt.subplot(1, 2, 1)
-    ax1.bar([1, 2], [n_correct_no_dswt, n_correct_dswt], color='#25419e', label='Correctly detected')
-    ax1.bar([1, 2], [n_incorrect_no_dswt, n_incorrect_dswt],
-            bottom=[n_correct_no_dswt, n_correct_dswt], color='#900C3F', label='Incorrectly detected')
-    ax1.bar([3], [n_uncertain], color='#929292')
+    ax1.bar([1], [n_correct_no_dswt], color='#900C3F', label='Algorithm: no DSWT')
+    ax1.bar([1], [n_incorrect_no_dswt], bottom=[n_correct_no_dswt], color='#25419e', label='Algorithm: DSWT')
+    ax1.bar([2], [n_correct_dswt], color='#25419e')
+    ax1.bar([2], [n_incorrect_dswt], bottom=[n_correct_dswt], color='#900C3F')
+    ax1.bar([3], [np.sum(l_uncertain_dswt)], color='#25419e')
+    ax1.bar([3], [np.sum(l_uncertain_no_dswt)], bottom=[np.sum(l_uncertain_dswt)], color='#900C3F')
     
     ax1.set_xticks([1, 2, 3])
-    ax1.set_xticklabels(['No DSWT', 'DSWT', 'Uncertain'])
+    ax1.set_xticklabels(['No DSWT', 'DSWT', 'Possible DSWT'])
+    ax1.set_xlabel('Manual determination')
     
-    ylim1 = np.ceil(max([np.sum(l_no_dswt), np.sum(l_dswt), np.sum(l_uncertain)]) / 10) * 10
+    ylim1 = np.ceil(max([np.sum(l_no_dswt), np.sum(l_dswt), np.sum(l_uncertain)]) / 50) * 50
     ax1.set_ylim([0, ylim1])
     ax1.set_ylabel('Tests (#)')
     
@@ -64,28 +72,46 @@ def plot_performance_summary(df:pd.DataFrame, output_path=None, show=False):
     ax11.set_yticks(yticks/len(manual_dswt) * 100)
     ax11.set_ylabel('Tests (%)')
     
-    ax1.legend(loc='upper right')
+    ax1.legend(loc='upper right', bbox_to_anchor=(1.0, 0.94))
+    
+    add_subtitle(ax1, '(a) Performance test outcomes')
     
     y_scale = 10**4
     # effect on transport
     ax2 = plt.subplot(1, 2, 2)
-    ax2.bar([1], [transport_incorrect_no_dswt / y_scale], color='#900C3F')
-    ax2.bar([2], [transport_correct_dswt / y_scale], color='#25419e')
-    ax2.bar([3], [transport_uncertain / y_scale], color='#929292')
+    bplot = ax2.boxplot([transport_incorrect_no_dswt / y_scale, transport_correct_dswt / y_scale, transport_uncertain / y_scale],
+                        patch_artist=True, tick_labels=['No DSWT', 'DSWT', 'Possible DSWT'])
+    for patch in bplot['boxes']:
+        patch.set_facecolor('w')
+    for median in bplot['medians']:
+        median.set_color('k')
     
-    ax2.set_xticks([1, 2, 3])
-    ax2.set_xticklabels(['No DSWT', 'DSWT', 'Uncertain'])
-    ax2.set_ylabel('Transport (10$^4$ m$^2$ s$^{-1}$)')
+    ax2.set_xlabel('Manual determination')
+    ax2.set_ylabel('Events transport (10$^4$ m$^2$ s$^{-1}$)')
     
-    ylim2 = np.ceil(max([transport_incorrect_no_dswt, transport_correct_dswt, transport_uncertain]) / y_scale / 10) * 10
+    max_transport = np.array([max(transport_incorrect_no_dswt), max(transport_correct_dswt), max(transport_uncertain)]) / y_scale
+    ylim2 = np.ceil(max(max_transport))
     ax2.set_ylim([0, ylim2])
+    
+    ax3 = ax2.twinx()
+    ax3.scatter([1, 2, 3], np.array([transport_incorrect_no_dswt_sum, transport_correct_dswt_sum, transport_uncertain_sum]) / y_scale,
+                c='#0e6e22', s=20, marker='x')
+    ylim3 = np.ceil(max([transport_incorrect_no_dswt_sum / y_scale, transport_correct_dswt_sum / y_scale, transport_uncertain_sum / y_scale]) / 50) * 50
+    ax3.set_ylim([0, ylim3])
+    ax3.set_ylabel('Total transport (10$^4$ m$^2$ s$^{-1}$)')
+    
+    ax3.spines['right'].set_color('#0e6e22')
+    ax3.tick_params(axis='y', colors='#0e6e22')
+    ax3.yaxis.label.set_color('#0e6e22')
+    
+    add_subtitle(ax2, '(b) Effect on transport')
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
         log.info(f'Saved performance summary to: {output_path}')
         
         data = np.array([[n_correct_no_dswt, n_incorrect_no_dswt, n_correct_dswt, n_incorrect_dswt, n_uncertain],
-                         [0, transport_incorrect_no_dswt, transport_correct_dswt, 0, transport_uncertain]])
+                         [0, transport_incorrect_no_dswt_sum, transport_correct_dswt_sum, 0, transport_uncertain_sum]])
         df_out = pd.DataFrame(data=data, columns=['No DSWT correct', 'No DSWT incorrect', 'DSWT correct', 'DSWT incorrect', 'uncertain'],
                               index=['n', 'transport (m2/s)'])
         output_csv = f'{os.path.splitext(output_path)[0]}.csv'
@@ -137,9 +163,11 @@ def plot_monthly_performance(df:pd.DataFrame, output_path=None, show=False):
                            time_is_center=True, color='#25419e',
                            ax=ax1, show=False)
     ax1.set_xticklabels(str_time)
-    # ax1.set_ylim([0, 200])
+    ylim1 = np.ceil(1.3*max(counts_m))
+    ax1.set_ylim([0, ylim1])
     # ax1.set_yticks(np.arange(0, 200, 20))
     ax1.set_xlim([datetime(2017, 1, 1), datetime(2017, 12, 31)])
+    add_subtitle(ax1, '(a) Number of tests per month')
     
     ax2 = plt.subplot(1, 2, 2)
     
@@ -150,19 +178,23 @@ def plot_monthly_performance(df:pd.DataFrame, output_path=None, show=False):
     y_scale = 10**4
     
     bottom = np.zeros(len(time_m))
-    ax2.bar(time_m, transport_correct_m / y_scale, width, label='Correct', bottom=bottom, color='#25419e')
+    ax2.bar(time_m, transport_correct_m / y_scale, width, label='DSWT', bottom=bottom, color='#25419e')
     bottom += transport_correct_m / y_scale
-    ax2.bar(time_m, transport_incorrect_m / y_scale, width, label='Incorrect', bottom=bottom, color='#900C3F')
+    ax2.bar(time_m, transport_incorrect_m / y_scale, width, label='No DSWT', bottom=bottom, color='#900C3F')
     bottom += transport_incorrect_m / y_scale
-    ax2.bar(time_m, transport_uncertain_m / y_scale, width, label='Uncertain', bottom=bottom, color='#929292')
+    ax2.bar(time_m, transport_uncertain_m / y_scale, width, label='Possible', bottom=bottom, color='#929292')
     
     ax2.set_xticks(center_time)
     ax2.set_xticklabels(str_time)
     ax2.set_ylabel('Monthly transport (10$^4$ m$^2$ s$^{-1}$)')
     
+    ylim2 = np.ceil(max(transport_correct_m + transport_incorrect_m + transport_uncertain_m) / y_scale / 50) * 50
+    ax2.set_ylim([0, ylim2])
     ax2.set_xlim([datetime(2017, 1, 1), datetime(2017, 12, 31)])
     
-    ax2.legend(loc='upper left')
+    ax2.legend(loc='upper right', bbox_to_anchor=(1.0, 0.94))
+    
+    add_subtitle(ax2, '(b) Monthly effect on transport')
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -236,5 +268,6 @@ if __name__ == '__main__':
     performance_file = f'performance_tests/output/{model}_{year}_performance_comparison.csv'
     df = pd.read_csv(performance_file)
     
-    # plot_performance_summary(df, output_path=f'performance_tests/output/{model}_performance_summary.jpg')
+    plot_performance_summary(df, output_path=f'performance_tests/output/{model}_performance_summary.jpg')
+    
     plot_monthly_performance(df, output_path=f'performance_tests/output/{model}_performance_monthly.jpg')
