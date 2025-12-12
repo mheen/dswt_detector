@@ -69,10 +69,45 @@ def plot_monthly_grid(ax:plt.axes, year:int) -> plt.axes:
         
     return ax
 
+def plot_boxplots_multiple_years(values:list[np.ndarray], years:list,
+                                 box_color='w', median_color='k', alpha=1.0,
+                                 ylabel='', ylim=None,
+                                 ax=None, show=False):
+    if len(years) != len(values):
+        raise ValueError(f'Length of values {len(values)} and years {len(years)} does not match!')
+    
+    if ax == None:
+        ax = plt.axes()
+    
+    flier_props = dict(marker='o', markersize=3, markerfacecolor=median_color, markeredgecolor='none')
+    
+    bplot = ax.boxplot(values, patch_artist=True, flierprops=flier_props, tick_labels=years)
+    
+    for patch in bplot['boxes']:
+        patch.set_facecolor(box_color)
+        patch.set_alpha(alpha)
+    for median in bplot['medians']:
+        median.set_color(median_color)
+
+    ax.set_ylabel(ylabel)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    else:
+        ylim = ax.get_ylim()
+        
+    plt.tick_params(axis='x', length=0, labelrotation=90)
+    for i in range(1, len(years)): # plot grid to show years
+        ax.plot([i+0.5, i+0.5], ylim, '-', color='#808080', alpha=0.2)
+        
+    if show == True:
+        plt.show()
+    else:
+        return ax
+
 def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[float],
                                   ylabel='', ylim=None,
                                   color='#25419e', c_change=None,
-                                  ax=None, show=True) -> plt.axes:
+                                  ax=None, show=False) -> plt.axes:
     time_years = np.array([t.year for t in time])
     years = np.unique(time_years)
     
