@@ -4,14 +4,17 @@ sys.path.insert(1, parent)
 
 import xarray as xr
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
+import pandas as pd
 from tools.files import get_files_in_dir
 from tools import log
 from tools.roms import get_z, find_eta_xi_covering_lon_lat_box, convert_roms_u_v_to_u_east_v_north
 from tools.roms import get_eta_xi_along_transect, get_distance_along_transect
 from tools.seawater_density import calculate_density
 from tools.coordinates import get_bearing_between_points
+from tools.buoyancy_flux import calculate_buoyancy_heat_flux, calculate_buoyancy_salt_flux
+from tools.timeseries import get_l_time_range
 
 g = 9.81 # m/s2
 
@@ -207,6 +210,35 @@ def load_roms_data(input_path:str, grid_file=None, drop_vars=None) -> xr.Dataset
     
     return roms_ds
 
+def load_roms_sflux_data(input_path:str, grid_file=None, drop_vars=None) -> xr.Dataset:
+    ds = read_roms_data(input_path, grid_file, None)
+
+    ds_sflux = xr.Dataset(
+        data_vars=dict(
+            lon_rho=(['eta_rho', 'xi_rho'], ds.lon_rho.values),
+            lat_rho=(['eta_rho', 'xi_rho'], ds.lat_rho.values),
+            temp_sur=(['ocean_time', 'eta_rho', 'xi_rho'], ds.temp_sur.values),
+            salt_sur=(['ocean_time', 'eta_rho', 'xi_rho'], ds.salt_sur.values),
+            shflux=(['ocean_time', 'eta_rho', 'xi_rho'], ds.shflux.values),
+            ssflux=(['ocean_time', 'eta_rho', 'xi_rho'], ds.ssflux.values)
+            ),
+        coords=dict(
+            ocean_time=('ocean_time', ds.ocean_time.values),
+            s_rho=('s_rho', ds.s_rho.values),
+            eta_rho=('eta_rho', ds.eta_rho.values),
+            xi_rho=('xi_rho', ds.xi_rho.values)
+        )
+    )
+    
+    bhflux = calculate_buoyancy_heat_flux(ds.shflux.values, ds.temp_sur.values)
+    bsflux = calculate_buoyancy_salt_flux(ds.ssflux.values, ds.salt_sur.values)
+    bflux = bhflux + bsflux
+    ds_sflux['bhflux'] = (['ocean_time', 'eta_rho', 'xi_rho'], bhflux)
+    ds_sflux['bsflux'] = (['ocean_time', 'eta_rho', 'xi_rho'], bsflux)
+    ds_sflux['bflux'] = (['ocean_time', 'eta_rho', 'xi_rho'], bflux)
+    
+    return ds_sflux
+
 def load_mf_roms_data(input_dir:str, grid_file=None, files_contain=None, drop_vars=None) -> xr.Dataset:
     input_paths = select_input_files(input_dir, file_contains=files_contain)
     roms_ds = read_roms_data(input_paths, grid_file, drop_vars)
@@ -233,11 +265,38 @@ def select_roms_subset(roms_ds:xr.Dataset,
     
     return subset_ds
 
-def select_roms_transect_from_known_coordinates(roms_ds:xr.Dataset, eta:np.ndarray, xi:np.ndarray) -> xr.Dataset:
+def add_sflux_to_transect_data(transect_ds:xr.Dataset, transect_sflux_ds:xr.Dataset):
+    
+    bhflux = np.empty([len(transect_ds.ocean_time), len(transect_ds.distance)]) * np.nan
+    bsflux = np.empty([len(transect_ds.ocean_time), len(transect_ds.distance)]) * np.nan
+    bflux = np.empty([len(transect_ds.ocean_time), len(transect_ds.distance)]) * np.nan
+    # in case times are different for sflux than other roms data, take means:
+    for i in range(len(transect_ds.ocean_time)):
+        dt = int(np.unique(np.diff(pd.to_datetime(transect_ds.ocean_time.values)))[0].astype('timedelta64[h]').astype(int)) # hours
+        time1 = pd.to_datetime(transect_ds.ocean_time.values[i])
+        time0 = time1 - timedelta(hours=dt)
+        l_time = get_l_time_range(pd.to_datetime(transect_sflux_ds.ocean_time.values), time0, time1)
+        bhflux[i, :] = np.nanmean(transect_sflux_ds.bhflux.values[l_time, :])
+        bsflux[i, :] = np.nanmean(transect_sflux_ds.bsflux.values[l_time, :])
+        bflux[i, :] = np.nanmean(transect_sflux_ds.bflux.values[l_time, :])
+    
+    transect_ds['bhflux'] = (['ocean_time', 'distance'], bhflux)
+    transect_ds['bsflux'] = (['ocean_time', 'distance'], bsflux)
+    transect_ds['bflux'] = (['ocean_time', 'distance'], bflux)
+    
+    return transect_ds
+
+def select_roms_transect_from_known_coordinates(roms_ds:xr.Dataset, eta:np.ndarray, xi:np.ndarray,
+                                                sflux_ds=None) -> xr.Dataset:
     etas = xr.DataArray(eta, dims='distance') # conversion to xr.DataArray needed to select individual points (rather than grid)
     xis = xr.DataArray(xi, dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later
    
     transect_ds = roms_ds.sel(xi_rho=xis, eta_rho=etas)
+    
+    if sflux_ds is not None:
+        transect_sflux_ds = sflux_ds.sel(xi_rho=xis, eta_rho=etas)
+        transect_ds = add_sflux_to_transect_data(transect_ds, transect_sflux_ds)
+    
     transect_ds = add_variables_to_transect_data(transect_ds)
     
     return transect_ds
@@ -246,13 +305,20 @@ def select_roms_transect_from_start_end_coordinates(
     roms_ds:xr.Dataset,
     lon1:float, lat1:float,
     lon2:float, lat2:float,
-    ds=500.
+    ds=500.,
+    sflux_ds=None
     ) -> xr.Dataset:
+    
     eta, xi = get_eta_xi_along_transect(roms_ds.lon_rho.values, roms_ds.lat_rho.values, lon1, lat1, lon2, lat2, ds)
     etas = xr.DataArray(eta, dims='distance') # conversion to xr.DataArray needed to select individual points (rather than grid)
     xis = xr.DataArray(xi, dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later
     
     transect_ds = roms_ds.sel(xi_rho=xis, eta_rho=etas)
+    
+    if sflux_ds is not None:
+        transect_sflux_ds = sflux_ds.sel(xi_rho=xis, eta_rho=etas)
+        transect_ds = add_sflux_to_transect_data(transect_ds, transect_sflux_ds)
+    
     transect_ds = add_variables_to_transect_data(transect_ds)
     
     return transect_ds
