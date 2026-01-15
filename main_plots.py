@@ -1,4 +1,4 @@
-from readers.read_dswt_output import read_dswt_occurrence_timeseries, read_dswt_transport, calculate_transport_across_contour, get_transport_map
+from readers.read_dswt_output import get_transport_map
 
 from tools.timeseries import get_monthly_means, get_monthly_climatology, get_yearly_means
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_yearly_grid, plot_monthly_grid
@@ -123,12 +123,10 @@ if __name__ == '__main__':
     grid_file = 'tests/data/grid.nc'
     depth_contour = 50
     
-    time, f_dswt = read_dswt_occurrence_timeseries(dswt_output_dir, years)
     grid_ds = xr.load_dataset(grid_file)
     
-    df_transport = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'mean_thickness', 'max_distance'])
-    df_timeseries = pd.DataFrame(columns=['time', 'f_dswt', f'transport_{str(int(depth_contour))}m'])
-
+    df_transport = pd.read_csv(f'{dswt_output_dir}processed/dswt_transport_{years[0]}.csv')
+    df_timeseries = pd.read_csv(f'{dswt_output_dir}processed/dswt_timeseries_{years[0]}.csv')
 
     plot_dswt_timeseries(df_timeseries, depth_contour, years, output_path='plots/test_timeseries.jpg')
     plot_dswt_map(df_transport, grid_ds, output_path='plots/test_map.jpg')

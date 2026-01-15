@@ -130,5 +130,5 @@ class DswtEvents:
     
 if __name__ == '__main__':
     input_dir = f'{get_dir_from_json("output")}'
-    years = np.arange(2017, 2018)
+    years = np.arange(2005, 2006)
     dswt_events = DswtEvents.read_from_multiple_csv_files(input_dir, years)
