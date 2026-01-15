@@ -2,6 +2,7 @@ from tools.coordinates import get_points_on_line_between_points, get_distance_be
 from matplotlib import path
 import numpy as np
 from scipy import spatial
+from warnings import warn
 
 def get_z(Vtransform:int,
           s:np.ndarray,
@@ -152,8 +153,17 @@ def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndar
             var_rho[:, :, :, 1:L] = 0.5*(var_u[:, :, :, 0:-1]+var_u[:, :, :, 1:]) # averages in middle of grid
             var_rho[:, :, :, 0] = var_u[:, :, :, 0] # single right value for first rho-point
             var_rho[:, :, :, -1] = var_u[:, :, :, -1] # single left value for last rho-point
+        elif n_dimension == 3:
+            warn(f'Assuming that 3D data has the form of [ocean_time, eta, xi] and has no depth dimension.')
+            T = var_u_size[0]
+            M = var_u_size[1]
+            L = var_u_size[2]
+            var_rho = np.zeros((T, M, L+1))
+            var_rho[:, :, 1:L] = 0.5*(var_u[:, :, 0:-1]+var_u[:, :, 1:]) # averages in middle of grid
+            var_rho[:, :, 0] = var_u[:, :, 0] # single right value for first rho-point
+            var_rho[:, :, -1] = var_u[:, :, -1] # single left value for last rho-point
         else:
-            raise ValueError('Conversion from u- to rho-coordinate only implemented for 4D variables.')
+            raise ValueError('Conversion from u- to rho-coordinate only implemented for 4D and 3D variables.')
         
         return var_rho
 
@@ -170,6 +180,18 @@ def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndar
             var_rho[:, :, 1:M, :] = 0.5*(var_v[:, :, 0:-1, :]+var_v[:, :, 1:, :]) # averages in middle of grid
             var_rho[:, :, 0, :] = var_v[:, :, 0, :] # single bottom value for first rho-point
             var_rho[:, :, -1, :] = var_v[:, :, -1, :] # single top value for last rho-point
+        elif n_dimension == 3:
+            warn(f'Assuming that 3D data has the form of [ocean_time, eta, xi] and has no depth dimension.')
+            T = var_v_size[0]
+            M = var_v_size[1]
+            L = var_v_size[2]
+            var_rho = np.zeros((T, M+1, L))
+            var_rho[:, 1:M, :] = 0.5*(var_v[:, 0:-1, :]+var_v[:, 1:, :]) # averages in middle of grid
+            var_rho[:, 0, :] = var_v[:, 0, :] # single bottom value for first rho-point
+            var_rho[:, -1, :] = var_v[:, -1, :] # single top value for last rho-point
+        else:
+            raise ValueError('Conversion from u- to rho-coordinate only implemented for 4D and 3D variables.')
+            
         return var_rho
 
     def rotate_u_v(u_rho:np.ndarray, v_rho:np.ndarray, angle:np.ndarray) -> tuple:
@@ -185,7 +207,14 @@ def convert_roms_u_v_to_u_east_v_north(u:np.ndarray, v:np.ndarray, angle:np.ndar
     
     # set velocities to NaN on land
     l_land = mask == 0
-    u_east[:, :, l_land] = np.nan
-    v_north[:, :, l_land] = np.nan
+    n_dimension = len(u_east.shape)
+    if n_dimension == 4:
+        u_east[:, :, l_land] = np.nan
+        v_north[:, :, l_land] = np.nan
+    elif n_dimension == 3:
+        u_east[:, l_land] = np.nan
+        v_north[:, l_land] = np.nan
+    else:
+        raise ValueError('Conversion only implemented for 4D and 3D variables.')
 
     return u_east, v_north

@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 
 def spatially_interpolate_dswt(df_transport:pd.DataFrame, interpolator, grid_ds:xr.Dataset, config:Config):
-    columns = ['time', 'eta', 'xi', 'transport', 'mean_thickness', 'max_distance']
+    columns = ['time', 'eta', 'xi', 'transport', 'mean_thickness', 'max_distance', 'min_distance', 'max_h', 'mean_drhodx']
     df_interp = pd.DataFrame(columns=columns)
     
     def _interpolate(x:np.ndarray, y:np.ndarray, z:np.ndarray, X:np.ndarray, Y:np.ndarray):
@@ -33,6 +33,9 @@ def spatially_interpolate_dswt(df_transport:pd.DataFrame, interpolator, grid_ds:
         transport = _interpolate(x, y, df_transport[l_time]['transport'].values, lon_interp, lat_interp)
         mean_thickness = _interpolate(x, y, df_transport[l_time]['mean_thickness'].values, lon_interp, lat_interp)
         max_distance = _interpolate(x, y, df_transport[l_time]['max_distance'].values, lon_interp, lat_interp)
+        min_distance = _interpolate(x, y, df_transport[l_time]['min_distance'].values, lon_interp, lat_interp)
+        max_h = _interpolate(x, y, df_transport[l_time]['max_h'].values, lon_interp, lat_interp)
+        mean_drhodx = _interpolate(x, y, df_transport[l_time]['mean_drhodx'].values, lon_interp, lat_interp)
         l_nonan = ~np.isnan(transport)
         
         df_interp_t = pd.DataFrame(data=np.array([np.repeat(pd.to_datetime(t), sum(l_nonan.astype(int))),
@@ -40,7 +43,10 @@ def spatially_interpolate_dswt(df_transport:pd.DataFrame, interpolator, grid_ds:
                                                     xi_interp[l_nonan],
                                                     transport[l_nonan],
                                                     mean_thickness[l_nonan],
-                                                    max_distance[l_nonan]]).transpose(),
+                                                    max_distance[l_nonan],
+                                                    min_distance[l_nonan],
+                                                    max_h[l_nonan],
+                                                    mean_drhodx[l_nonan]]).transpose(),
                                     columns=columns)
         
         df_interp = pd.concat([df_interp, df_interp_t])

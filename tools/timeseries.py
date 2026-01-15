@@ -13,6 +13,12 @@ def convert_decimal_year_to_datetime(decimal_years:np.ndarray[float]) -> np.ndar
         
     return np.array(time)
 
+def get_time_indices(time_array:np.ndarray, times_to_match:np.ndarray[datetime]) -> np.ndarray[int]:
+    indices = np.empty(len(times_to_match)) * np.nan
+    for i in range(len(times_to_match)):
+        indices[i] = get_time_index(time_array, times_to_match[i])
+    return indices.astype(int)
+
 def get_time_index(time_array:np.ndarray, time:datetime) -> int:
     '''Returns exact index of a requested time, raises
     error if this does not exist.'''

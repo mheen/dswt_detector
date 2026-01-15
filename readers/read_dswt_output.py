@@ -5,6 +5,7 @@ sys.path.insert(1, parent)
 from tools.roms import get_eta_xi_of_lon_lat_point
 from tools.coordinates import get_distance_between_points
 from tools.files import get_dir_from_json
+from tools.timeseries import get_time_indices
 from tools import log
 
 from datetime import datetime, timedelta
@@ -92,7 +93,8 @@ def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> tuple:
     lon = grid_ds.lon_rho.values
     lat = grid_ds.lat_rho.values
     
-    df_total = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'size', 'mean_thickness', 'max_distance'])
+    df_total = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'size', 'mean_thickness', 'max_distance',
+                                     'min_distance', 'max_h', 'mean_drhodx'])
     
     for i in range(len(years)):
         input_path = f'{input_dir}dswt_{years[i]}.csv'
@@ -108,7 +110,10 @@ def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> tuple:
         df_daily_transport_per_loc = df.groupby(['time', 'eta', 'xi']).agg(
             transport=('transport', 'mean'),
             mean_thickness=('thickness', 'mean'),
-            max_distance=('distance', 'max')).reset_index()
+            max_distance=('distance', 'max'),
+            min_distance=('distance', 'min'),
+            max_h=('h', 'max'),
+            mean_drhodx=('drhodx_mean', 'mean')).reset_index()
 
         df_total = pd.concat([df_total, df_daily_transport_per_loc])
             
@@ -125,7 +130,7 @@ def get_transport_map(df_transport:pd.DataFrame,
         
     return transport_map
 
-def calculate_transport_across_contour(df_transport:pd.DataFrame,
+def get_daily_transport_across_contour_df(df_transport:pd.DataFrame,
                                        grid_ds:xr.Dataset,
                                        lon_range:list,
                                        lat_range:list,
@@ -206,14 +211,33 @@ def calculate_transport_across_contour(df_transport:pd.DataFrame,
     # daily transport across contour
     df_contour['dx'] = dx_for_in_df
     df_contour['transport_m3'] = df_contour['transport'].values * df_contour['dx'].values
-    df_contour_daily = df_contour.groupby(['time']).agg(total_transport=('transport_m3', 'sum'))
+    df_contour_daily = df_contour.groupby(['time']).agg(total_transport=('transport_m3', 'sum'),
+                                                        mean_thickness=('mean_thickness', 'mean'),
+                                                        max_distance=('max_distance', 'max'),
+                                                        min_distance=('min_distance', 'min'),
+                                                        max_h=('max_h', 'max'),
+                                                        mean_drhodx=('mean_drhodx', 'mean'))
+    df_contour_daily[f'transport_{str(int(depth_contour))}m'] = df_contour_daily['total_transport'].values / contour_length
     
-    daily_transport = np.zeros(len(time))
-    for t in range(len(df_contour_daily)):
-        i_time = np.where(df_contour_daily.index[t] == time)[0][0]
-        daily_transport[i_time] = df_contour_daily['total_transport'].values[t] / contour_length
+    i_times = get_time_indices(time, df_contour_daily.index)
+    daily_transport_all_days = np.zeros(len(time))
+    daily_transport_all_days[i_times] = df_contour_daily[f'transport_{str(int(depth_contour))}m'].values
+    daily_thickness_all_days = np.empty(len(time)) * np.nan
+    daily_thickness_all_days[i_times] = df_contour_daily['mean_thickness'].values
+    daily_max_distance_all_days = np.empty(len(time)) * np.nan
+    daily_max_distance_all_days[i_times] = df_contour_daily['max_distance'].values
+    daily_min_distance_all_days = np.empty(len(time)) * np.nan
+    daily_min_distance_all_days[i_times] = df_contour_daily['min_distance'].values
+    daily_max_h_all_days = np.empty(len(time)) * np.nan
+    daily_max_h_all_days[i_times] = df_contour_daily['max_h'].values
+    daily_drhodx_all_days = np.empty(len(time)) * np.nan
+    daily_drhodx_all_days[i_times] = df_contour_daily['mean_drhodx'].values
+    
+    df_contour_daily_all_days = pd.DataFrame(columns = ['time', 'transport_50m', 'mean_thickness', 'max_distance', 'min_distance', 'max_h', 'mean_drhodx'],
+                                              data=np.array([time, daily_transport_all_days, daily_thickness_all_days, daily_max_distance_all_days,
+                                                    daily_min_distance_all_days, daily_max_h_all_days, daily_drhodx_all_days]).transpose())
 
-    return time, daily_transport, contour_length
+    return df_contour_daily_all_days
 
 if __name__ == '__main__':
     input_dir = 'output/test_114-116E_33-31S/'

@@ -17,7 +17,7 @@ RHO0 = 1025.
 
 def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_condition=True):
     '''New method:
-    1. MLD at coast must reach bottom (NOTE: think about how to implement this for island transects)
+    1. MLD at coast must reach bottom
     2. drho/dx < 0
     3. drho * s / rho0 < -2 10**-8
     4. transport in the bottom layer must be offshore'''
