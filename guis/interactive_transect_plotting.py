@@ -5,12 +5,12 @@ sys.path.insert(1, parent)
 from plot_tools.basic_maps import plot_basic_map
 from plot_tools.general import add_subtitle
 from readers.read_ocean_data import select_roms_transect_from_known_coordinates, find_filepath_for_specific_date
-from dswt.dswt_detection import determine_dswt_along_transect
 
 from tools.config import read_config, Config
 from readers.read_ocean_data import load_roms_data, select_roms_subset
 from tools.files import get_dir_from_json
 from transects import read_transects_in_lon_lat_range_from_json
+from tools import log
 
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -71,13 +71,11 @@ def plot_transects(ax:plt.axes, transects:list[dict], df_dswt:pd.DataFrame, time
 
 def base_plot(fig):
     
-    ax1 = plt.subplot(4, 4, (1, 5), projection=ccrs.PlateCarree())
-    ax2 = plt.subplot(4, 4, (2, 6), projection=ccrs.PlateCarree())
-    ax3 = plt.subplot(4, 4, (3, 8))
-    ax4 = plt.subplot(4, 4, (9, 10))
-    ax5 = plt.subplot(4, 4, (11, 12))
-    ax6 = plt.subplot(4, 4, (13, 14))
-    ax7 = plt.subplot(4, 4, (15, 16))
+    ax1 = plt.subplot(3, 4, (1, 5), projection=ccrs.PlateCarree())
+    ax2 = plt.subplot(3, 4, (2, 6), projection=ccrs.PlateCarree())
+    ax3 = plt.subplot(3, 4, (3, 8))
+    ax4 = plt.subplot(3, 4, (9, 10))
+    ax5 = plt.subplot(3, 4, (11, 12))
     
     l3, b3, w3, h3 = ax3.get_position().bounds
     cax1 = fig.add_axes([l3+w3+0.02, b3, 0.02, h3])
@@ -88,22 +86,16 @@ def base_plot(fig):
     l5, b5, w5, h5 = ax5.get_position().bounds
     cax5 = fig.add_axes([l5+w5+0.02, b5, 0.02, h5])
     
-    l6, b6, w6, h6 = ax6.get_position().bounds
-    cax6 = fig.add_axes([l6-0.04, b6, 0.02, h6])
-    
     # hide all axes except for maps
     ax3.set_axis_off()
     ax4.set_axis_off()
     ax5.set_axis_off()
-    ax6.set_axis_off()
-    ax7.set_axis_off()
     
     cax1.set_axis_off()
     cax4.set_axis_off()
     cax5.set_axis_off()
-    cax6.set_axis_off()
     
-    return ax1, ax2, ax3, ax4, ax5, ax6, ax7, cax1, cax4, cax5, cax6
+    return ax1, ax2, ax3, ax4, ax5, cax1, cax4, cax5
 
 class InteractiveTransectSelectionTimeStepping:
     def __init__(self,
@@ -129,7 +121,7 @@ class InteractiveTransectSelectionTimeStepping:
         self.fig = plt.figure(figsize=(9, 8))
         self.lon_range = lon_range
         self.lat_range = lat_range
-        self.ax1, self.ax2, self.ax3, self.ax4, self.ax5, self.ax6, self.ax7, self.cax1, self.cax4, self.cax5, self.cax6 = base_plot(self.fig)
+        self.ax1, self.ax2, self.ax3, self.ax4, self.ax5, self.cax1, self.cax4, self.cax5 = base_plot(self.fig)
         
         self.vmin = {'rho': 1025.0, 'temp':18.0, 'salt':35.0, 'drhodz': 0.0}
         self.vmax = {'rho': 1026.0, 'temp':22.0, 'salt':36.0, 'drhodz': 0.03}
@@ -216,21 +208,18 @@ class InteractiveTransectSelectionTimeStepping:
         self.ax3.clear()
         self.ax4.clear()
         self.ax5.clear()
-        self.ax6.clear()
-        self.ax7.clear()
         self.cax4.clear()
         self.cax5.clear()
-        self.cax6.clear()
         
         if self.picked_transect == True:
+            log.info(f'Selected transect: {self.transect}')
             transect = self.transects_to_plot[self.transect]
             self.transect_ds = select_roms_transect_from_known_coordinates(self.roms_ds, transect['eta'], transect['xi'])
             
             # density
             self.transect_ds['density'][self.t, :, :].plot(x='distance', y='z_rho', vmin=self.vmin['rho'], vmax=self.vmax['rho'],
                                                         cmap=self.cmap['rho'], add_colorbar=False, ax=self.ax3)
-            l_dswt, _, _, _, _ = determine_dswt_along_transect(self.transect_ds, self.config)
-            self.ax3.set_title(f'{self.transect} - DSWT: {l_dswt[self.t].astype(bool)}')
+            self.ax3.set_title(f'{self.transect}')
             
             self.ax3.fill_between(self.transect_ds.distance.values, -210, -self.transect_ds.h.values, color='#d2d2d2', edgecolor='k')
             self.ax3.set_xlim([self.transect_ds.distance.values[0], self.transect_ds.distance.values[-1]])
@@ -273,43 +262,11 @@ class InteractiveTransectSelectionTimeStepping:
             self.ax5.set_title('')
             add_subtitle(self.ax5, 'Salinity', location='lower left')
             
-            # vertical density gradient
-            c6 = self.transect_ds['vertical_density_gradient'][self.t, :, :].plot(x='distance', y='z_rho', vmin=self.vmin['drhodz'], vmax=self.vmax['drhodz'],
-                                                        cmap=self.cmap['drhodz'], add_colorbar=False, ax=self.ax6)
-            self.ax6.fill_between(self.transect_ds.distance.values, -210, -self.transect_ds.h.values, color='#d2d2d2', edgecolor='k')
-            self.ax6.set_xlim([self.transect_ds.distance.values[0], self.transect_ds.distance.values[-1]])
-            self.ax6.set_ylim([-200, 0])
-            self.ax6.set_xlabel('')
-            self.ax6.set_xticklabels([])
-            self.ax6.set_ylabel('Depth')
-            self.ax6.yaxis.set_label_coords(0.07, 0.5, transform=self.ax6.transAxes)
-            self.ax6.set_yticks([0, -50, -100, -150, -200])
-            self.ax6.set_yticklabels([])
-            self.ax6.set_title('')
-            add_subtitle(self.ax6, 'Vertical density gradient (kg/m$^3$/m)', location='lower left')
-            
-            # vertical density gradient in each cell
-            for i in range(len(self.transect_ds.distance)):
-                self.transect_ds.vertical_density_gradient[self.t, :, i].plot(y='z_rho', ax=self.ax7)
-            self.ax7.set_xlim([self.vmin['drhodz'], self.vmax['drhodz']+0.5*self.vmax['drhodz']])
-            self.ax7.set_ylim([-200, 0])
-            self.ax7.set_ylabel('Depth (m)')
-            self.ax7.set_yticks([0, -50, -100, -150, -200])
-            self.ax7.set_yticklabels([0, 50, 100, 150, 200])
-            self.ax7.yaxis.tick_right()
-            self.ax7.yaxis.set_label_position('right')
-            self.ax7.set_xlabel('Vertical density gradient (kg/m$^3$/m)')
-            self.ax7.set_title('')
-            self.ax7.plot([self.config.minimum_drhodz, self.config.minimum_drhodz], [-200, 0], '-k')
-            
             # colorbars
             cbar4 = plt.colorbar(c4, cax=self.cax4)
             self.cax4.yaxis.set_ticks_position('left')
             
             cbar5 = plt.colorbar(c5, cax=self.cax5)
-            
-            cbar6 = plt.colorbar(c6, cax=self.cax6)
-            self.cax6.yaxis.set_ticks_position('left')
             
             plt.draw()
         
@@ -368,7 +325,7 @@ def interactive_transect_time_cycling_plot(input_dir:str, grid_file:str,
     interactive_plot.show()
     
 if __name__ == '__main__':
-    input_path = f'{get_dir_from_json("cwa")}2017/cwa_20170211_03__his.nc'
+    input_path = f'{get_dir_from_json("cwa")}2017/cwa_20170514_03__his.nc'
     grid_file = f'{get_dir_from_json("cwa")}grid.nc'
     roms_ds = load_roms_data(input_path, grid_file)
     
