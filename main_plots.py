@@ -34,10 +34,10 @@ def plot_dswt_timeseries(df_timeseries:pd.DataFrame,
     
     xlim = [time[0], time[-1]]
     
-    time_m, f_dswt_m = get_monthly_means(time, f_dswt)
-    _, transport_m = get_monthly_means(time, transport_contour)
-    time_y, f_dswt_y = get_yearly_means(time, f_dswt)
-    _, transport_y = get_yearly_means(time, transport_contour)
+    time_m, f_dswt_m, _ = get_monthly_means(time, f_dswt)
+    _, transport_m, _ = get_monthly_means(time, transport_contour)
+    time_y, f_dswt_y, _ = get_yearly_means(time, f_dswt)
+    _, transport_y, _ = get_yearly_means(time, transport_contour)
     
     fig = plt.figure(figsize=(6, 5))
     ax1 = plt.subplot(2, 1, 1)

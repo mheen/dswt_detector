@@ -60,12 +60,12 @@ def plot_yearly_grid(ax:plt.axes, years:list) -> plt.axes:
         
     return ax
 
-def plot_monthly_grid(ax:plt.axes, year:int) -> plt.axes:
+def plot_monthly_grid(ax:plt.axes, year:int, color='#808080', alpha=0.2, linewidth=0.7) -> plt.axes:
     plt.tick_params(axis='x', length=0)
     ylim = ax.get_ylim()
     for m in range(1, 13):
         date = datetime(year, m, 1)
-        ax.plot([date, date], ylim, '-', color='#808080', alpha=0.2)
+        ax.plot([date, date], ylim, '-', color=color, alpha=alpha, linewidth=linewidth)
         
     return ax
 
@@ -105,6 +105,7 @@ def plot_boxplots_multiple_years(values:list[np.ndarray], years:list,
         return ax
 
 def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[float],
+                                  yerr=None, err_color='none',
                                   ylabel='', ylim=None,
                                   color='#25419e', c_change=None,
                                   ax=None, show=False) -> plt.axes:
@@ -127,12 +128,12 @@ def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[f
         ax = plt.axes()
 
     if type(color) == str:
-        ax.bar(center_time, values, color=color, width=width)
+        ax.bar(center_time, values, color=color, width=width, yerr=yerr, ecolor=err_color)
     elif type(color) == list and c_change is not None:
         l0 = values <= c_change
         l1 = values > c_change
-        ax.bar(center_time[l0], values[l0], color=color[0], width=width[l0])
-        ax.bar(center_time[l1], values[l1], color=color[1], width=width[l1])
+        ax.bar(center_time[l0], values[l0], color=color[0], width=width[l0], yerr=yerr, ecolor=err_color)
+        ax.bar(center_time[l1], values[l1], color=color[1], width=width[l1], yerr=yerr, ecolor=err_color)
         ax.plot([center_time[0], center_time[-1]], [c_change, c_change], '-k')
     
     ax.set_ylabel(ylabel)
@@ -155,6 +156,7 @@ def plot_histogram_multiple_years(time:np.ndarray[datetime], values:np.ndarray[f
         return ax
 
 def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
+                           yerr=None, err_color='none',
                            ylabel='', ylim=None, time_is_center=False,
                            color='#25419e', c_change=None,
                            ax=None, show=True) -> plt.axes:
@@ -171,12 +173,12 @@ def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
         ax = plt.axes()
         
     if type(color) == str:
-        ax.bar(center_time, values, color=color, width=width)
+        ax.bar(center_time, values, color=color, width=width, yerr=yerr, ecolor=err_color)
     elif type(color) == list and c_change is not None:
         l0 = values <= c_change
         l1 = values > c_change
-        ax.bar(center_time[l0], values[l0], color=color[0], width=width[l0])
-        ax.bar(center_time[l1], values[l1], color=color[1], width=width[l1])
+        ax.bar(center_time[l0], values[l0], color=color[0], width=width[l0], yerr=yerr[l0], ecolor=err_color[0])
+        ax.bar(center_time[l1], values[l1], color=color[1], width=width[l1], yerr=yerr[l1], ecolor=err_color[1])
         ax.plot([center_time[0], center_time[-1]], [c_change, c_change], '-k')
     
     ax.set_xticks(center_time)
@@ -192,7 +194,7 @@ def plot_monthly_histogram(time:np.ndarray[datetime], values:np.ndarray[float],
         return ax, center_time, str_time
     
 def plot_multi_bar_monthly_histogram(time:np.ndarray[datetime], values:list[np.ndarray[float]], colors:list,
-                                     labels:list, ylabel='', ylim=None, legend_loc='upper right',
+                                     labels:list, yerr=None, err_color=None, ylabel='', ylim=None, legend_loc='upper right',
                                      ax=None, show=True) -> plt.axes:
     center_times, width, str_time, str_labels = _get_center_label_width_for_multi_monthly_bar_plot(time, len(values))
     
@@ -200,7 +202,10 @@ def plot_multi_bar_monthly_histogram(time:np.ndarray[datetime], values:list[np.n
         ax = plt.axes()
         
     for i in range(len(values)):
-        ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i])
+        if yerr is not None:
+            ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i], yerr=yerr[i], ecolor=err_color[i])
+        else:
+            ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i])
     
     ax.set_xticks(str_time)
     ax.set_xticklabels(str_labels)
@@ -217,7 +222,7 @@ def plot_multi_bar_monthly_histogram(time:np.ndarray[datetime], values:list[np.n
         return ax, l
 
 def plot_multi_bar_yearly_histogram(time:np.ndarray[datetime], values:list[np.ndarray[float]], colors:list,
-                                     labels:list, ylabel='', ylim=None, legend_loc='upper right',
+                                     labels:list, yerr=None, err_color=None, ylabel='', ylim=None, legend_loc='upper right',
                                      ax=None, show=True) -> plt.axes:
     center_times, width, str_time, str_labels = _get_center_label_width_for_multi_year_bar_plot(time, len(values))
     
@@ -225,7 +230,10 @@ def plot_multi_bar_yearly_histogram(time:np.ndarray[datetime], values:list[np.nd
         ax = plt.axes()
         
     for i in range(len(values)):
-        ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i])
+        if yerr is not None:
+            ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i], yerr=yerr[i], ecolor=err_color[i])
+        else:
+            ax.bar(center_times[i], values[i], color=colors[i], width=width, label=labels[i])
     
     ax.set_xticks(str_time)
     ax.set_xticklabels(str_labels)
