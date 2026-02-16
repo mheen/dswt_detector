@@ -3,7 +3,7 @@ from guis.transect_removal import interactive_transect_removal
 from guis.transect_addition import interactive_transect_addition, write_added_transect_keys_to_file
 
 from readers.read_ocean_data import load_roms_data, select_input_files, load_roms_sflux_data
-from readers.read_dswt_output import get_domain_str, read_dswt_occurrence_timeseries, read_dswt_transport, get_daily_transport_across_contour_df
+from readers.read_dswt_output import get_domain_str, get_dswt_daily_timeseries_df, read_dswt_transport, get_daily_transport_across_contour_df
 
 from main_plots import plot_dswt_timeseries, plot_dswt_map
 
@@ -239,41 +239,43 @@ for year in years:
     else:
         df_transport = pd.read_csv(output_transport)
         # occurrence timeseries
-        time, f_dswt = read_dswt_occurrence_timeseries(output_dir, [year])
+        df_timeseries = get_dswt_daily_timeseries_df(output_dir, [year])
         # transport timeseries
-        df_timeseries = get_daily_transport_across_contour_df(df_transport,
-                                                              grid_ds,
-                                                              lon_range,
-                                                              lat_range,
-                                                              depth_contour,
-                                                              dx_method='roms')
-        df_timeseries['f_dswt'] = f_dswt
+        time, transport_contour, vel_contour, thickness_contour = get_daily_transport_across_contour_df(df_transport,
+                                                                                                        grid_ds,
+                                                                                                        lon_range,
+                                                                                                        lat_range,
+                                                                                                        depth_contour,
+                                                                                                        dx_method='roms')
+        df_timeseries[f'transport_{int(depth_contour)}m'] = transport_contour
+        df_timeseries[f'vel_{int(depth_contour)}m'] = vel_contour
+        df_timeseries[f'thickness_{int(depth_contour)}m'] = thickness_contour
         log.info(f'Writing processed DSWT timeseries to csv: {output_timeseries}')
         df_timeseries.to_csv(output_timeseries, index=False)
 
-# # --------------------------------------------------------
-# # Output: timeseries and maps analyses and plots
-# # --------------------------------------------------------
-# log.info('''--------------------------------------------------
-#                               Creating plots
-#             --------------------------------------------------''')
+# --------------------------------------------------------
+# Output: timeseries and maps analyses and plots
+# --------------------------------------------------------
+log.info('''--------------------------------------------------
+                              Creating plots
+            --------------------------------------------------''')
 
-# df_transport = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'mean_thickness', 'max_distance'])
-# df_timeseries = pd.DataFrame(columns=['time', 'f_dswt', f'transport_{str(int(depth_contour))}m'])
-# for year in years:
-#     output_transport = f'{output_dir_processing}dswt_transport_{year}.csv'
-#     df_transport_y = pd.read_csv(output_transport)
-#     df_transport = pd.concat([df_transport, df_transport_y])
+df_transport = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'mean_thickness', 'max_distance'])
+df_timeseries = pd.DataFrame(columns=['time', 'f_dswt', f'transport_{str(int(depth_contour))}m'])
+for year in years:
+    output_transport = f'{output_dir_processing}dswt_transport_{year}.csv'
+    df_transport_y = pd.read_csv(output_transport)
+    df_transport = pd.concat([df_transport, df_transport_y])
 
-#     output_timeseries = f'{output_dir_processing}dswt_timeseries_{year}.csv'
-#     df_timeseries_y = pd.read_csv(output_timeseries)
-#     df_timeseries = pd.concat([df_timeseries, df_timeseries_y])
+    output_timeseries = f'{output_dir_processing}dswt_timeseries_{year}.csv'
+    df_timeseries_y = pd.read_csv(output_timeseries)
+    df_timeseries = pd.concat([df_timeseries, df_timeseries_y])
 
-# timeseries_plot = f'{plot_dir}{model}_timeseries.jpg'
-# plot_dswt_timeseries(df_timeseries, depth_contour, years,
-#                      output_path=timeseries_plot, show=False)
-# log.info(f'Saved timeseries plot to {timeseries_plot}')
+timeseries_plot = f'{plot_dir}{model}_timeseries.jpg'
+plot_dswt_timeseries(df_timeseries, depth_contour, years,
+                     output_path=timeseries_plot, show=False)
+log.info(f'Saved timeseries plot to {timeseries_plot}')
 
-# map_plot = f'{plot_dir}{model}_map.jpg'
-# plot_dswt_map(df_transport, grid_ds, output_path=map_plot, show=False)
-# log.info(f'Saved map plot to {map_plot}')
+map_plot = f'{plot_dir}{model}_map.jpg'
+plot_dswt_map(df_transport, grid_ds, output_path=map_plot, show=False)
+log.info(f'Saved map plot to {map_plot}')

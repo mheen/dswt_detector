@@ -2,6 +2,8 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
+from readers.read_ocean_data import get_roms_contour_coordinates, get_roms_ds_along_contour
+
 from tools.roms import get_eta_xi_of_lon_lat_point
 from tools.coordinates import get_distance_between_points
 from tools.files import get_dir_from_json
@@ -34,9 +36,9 @@ def _create_daily_time_array(year_start:int, year_end:int) -> np.ndarray[datetim
     time = np.array(time)
     return time
 
-def read_dswt_occurrence_timeseries(input_dir:str, years:list) -> tuple[np.ndarray[datetime], np.ndarray[float]]:
-    '''Reads DSWT detection output from multiple files for multiple years (if needed) and determines the daily
-    fraction of DSWT occurrence over the fraction of transects.
+def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[datetime], np.ndarray[float]]:
+    '''Reads DSWT detection output from multiple files for multiple years (if needed) and determines daily
+    DSWT measures over all transects.
     
     Input:
     - input_dir [string]: path to directory that contains output csv files from the DSWT detection
@@ -44,11 +46,19 @@ def read_dswt_occurrence_timeseries(input_dir:str, years:list) -> tuple[np.ndarr
       note: if you only want to read a single year, put that year into a list
     
     Output:
-    - time: numpy datetime array
-    - f_dswt: fraction of DSWT occurrence'''
+    - df: DataFrame with daily measures'''
     
     time = np.array([])
     f_dswt = np.array([])
+    transport = np.array([])
+    thickness = np.array([])
+    vel = np.array([])
+    drhodx = np.array([])
+    min_distance = np.array([])
+    max_distance = np.array([])
+    min_h = np.array([])
+    max_h = np.array([])
+    drhos = np.array([])
     
     for year in years:
         input_path = f'{input_dir}dswt_{year}.csv'
@@ -58,27 +68,70 @@ def read_dswt_occurrence_timeseries(input_dir:str, years:list) -> tuple[np.ndarr
             log.info(f'Input file does not exist, adding empty array instead: {input_path}')
             time = np.concatenate((time, time_year))
             f_dswt = np.concatenate((f_dswt, np.empty(len(time_year))*np.nan))
+            transport = np.concatenate((transport, np.empty(len(time_year))*np.nan))
+            thickness = np.concatenate((thickness, np.empty(len(time_year))*np.nan))
+            vel = np.concatenate((vel, np.empty(len(time_year))*np.nan))
+            drhodx = np.concatenate((drhodx, np.empty(len(time_year))*np.nan))
+            min_distance = np.concatenate((min_distance, np.empty(len(time_year))*np.nan))
+            max_distance = np.concatenate((max_distance, np.empty(len(time_year))*np.nan))
+            min_h = np.concatenate((min_h, np.empty(len(time_year))*np.nan))
+            max_h = np.concatenate((max_h, np.empty(len(time_year))*np.nan))
+            drhos = np.concatenate((drhos, np.empty(len(time_year))*np.nan))
             continue
         
         df = pd.read_csv(input_path)
         df_daily_mean = (df.groupby(['time', 'transect']).mean()).groupby('time').mean() # group by both time and transect because there are multiple values for transect
+        df_daily_min = (df.groupby(['time', 'transect']).min()).groupby('time').min()
+        df_daily_max = (df.groupby(['time', 'transect']).max()).groupby('time').max()
         
         # f_dswt with zero values included
         time_org = np.array([datetime.strptime(t, '%Y-%m-%d') for t in df_daily_mean.index.values])
         f_dswt_year = np.zeros(len(time_year))
+        transport_year = np.empty(len(time_year)) * np.nan
+        thickness_year = np.empty(len(time_year)) * np.nan
+        vel_year = np.empty(len(time_year)) * np.nan
+        drhodx_year = np.empty(len(time_year)) * np.nan
+        min_distance_year = np.empty(len(time_year)) * np.nan
+        max_distance_year = np.empty(len(time_year)) * np.nan
+        min_h_year = np.empty(len(time_year)) * np.nan
+        max_h_year = np.empty(len(time_year)) * np.nan
+        drhos_year = np.empty(len(time_year)) * np.nan
         for t in range(len(time_org)):
             i_time = np.where(time_org[t] == time_year)[0][0]
             f_dswt_year[i_time] = df_daily_mean['f_dswt'].values[t]
+            transport_year[i_time] = df_daily_mean['transport'].values[t]
+            thickness_year[i_time] = df_daily_mean['thickness'].values[t]
+            vel_year[i_time] = df_daily_mean['vel'].values[t]
+            drhodx_year[i_time] = df_daily_mean['drhodx_mean'].values[t]
+            min_distance_year[i_time] = df_daily_min['distance'].values[t]
+            max_distance_year[i_time] = df_daily_max['distance'].values[t]
+            min_h_year[i_time] = df_daily_min['h'].values[t]
+            max_h_year[i_time] = df_daily_max['h'].values[t]
+            drhos_year[i_time] = df_daily_mean['drhos_mean'].values[t]
         
         time = np.concatenate((time, time_year))
         f_dswt = np.concatenate((f_dswt, f_dswt_year))
+        transport = np.concatenate((transport, transport_year))
+        thickness = np.concatenate((thickness, thickness_year))
+        vel = np.concatenate((vel, vel_year))
+        drhodx = np.concatenate((drhodx, drhodx_year))
+        min_distance = np.concatenate((min_distance, min_distance_year))
+        max_distance = np.concatenate((max_distance, max_distance_year))
+        min_h = np.concatenate((min_h, min_h_year))
+        max_h = np.concatenate((max_h, max_h_year))
+        drhos = np.concatenate((drhos, drhos_year))
+    
+    data = np.array([time, f_dswt, vel, thickness, transport, drhodx, min_distance, max_distance, min_h, max_h, drhos])
+    columns = ['time', 'f_dswt', 'vel', 'thickness', 'transport', 'drhodx', 'min_distance', 'max_distance', 'min_h', 'max_h', 'drhos']
+    
+    df_timeseries = pd.DataFrame(data=data.transpose(), columns=columns)
         
-    return time, f_dswt
+    return df_timeseries
 
-def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> tuple:
+def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> xr.Dataset:
     '''Reads DSWT detection output from multiple files for multiple years (if needed) and determines the daily
     cross-shelf transport associated with DSWT occurrence. Transport values are returned as both
-    a function of time and location.
+    a function of time and location in an xarray dataset.
     
     Input:
     - input_dir [string]: path to directory that contains output csv files from the DSWT detection
@@ -87,14 +140,18 @@ def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> tuple:
     - grid_file [string]: path to ocean model grid file
     
     Output:
-    - time: numpy datetime array
-    - f_dswt: fraction of DSWT occurrence'''
+    - df_transport [pd.DataFrame]: daily transport as function of location'''
     
     lon = grid_ds.lon_rho.values
     lat = grid_ds.lat_rho.values
     
-    df_total = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'size', 'mean_thickness', 'max_distance',
-                                     'min_distance', 'max_h', 'mean_drhodx'])
+    n_days = (datetime(years[-1], 12, 31) - datetime(years[0], 1, 1)).days + 1
+    overall_time = []
+    for n in range(n_days):
+        overall_time.append(datetime(years[0], 1, 1) + timedelta(days=n))
+    overall_time = np.array(overall_time)
+    
+    df_total = pd.DataFrame(columns=['time', 'eta', 'xi', 'transport', 'size', 'mean_thickness', 'mean_vel'])
     
     for i in range(len(years)):
         input_path = f'{input_dir}dswt_{years[i]}.csv'
@@ -110,10 +167,7 @@ def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> tuple:
         df_daily_transport_per_loc = df.groupby(['time', 'eta', 'xi']).agg(
             transport=('transport', 'mean'),
             mean_thickness=('thickness', 'mean'),
-            max_distance=('distance', 'max'),
-            min_distance=('distance', 'min'),
-            max_h=('h', 'max'),
-            mean_drhodx=('drhodx_mean', 'mean')).reset_index()
+            mean_vel=('vel', 'mean')).reset_index()
 
         df_total = pd.concat([df_total, df_daily_transport_per_loc])
             
@@ -121,13 +175,17 @@ def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> tuple:
 
 def get_transport_map(df_transport:pd.DataFrame,
                       l_time:np.ndarray[bool],
-                      map_shape:list[int]):
-    df_map = df_transport[l_time].groupby(['eta', 'xi']).agg(transport=('transport', 'mean'))
+                      map_shape:list[int],
+                      variable='transport'):
+
+    df_sum = df_transport[l_time].groupby(['eta', 'xi']).agg(values=(variable, 'sum'))
+    n_time = len(pd.unique(df_transport[l_time]['time'].values))
+    df_map = df_sum / n_time
     
     transport_map = np.empty(map_shape)*np.nan
     for i in range(len(df_map)):
-        transport_map[df_map.index.values[i]] = df_map['transport'].values[i]
-        
+        transport_map[df_map.index.values[i]] = df_map['values'].values[i]
+    
     return transport_map
 
 def get_daily_transport_across_contour_df(df_transport:pd.DataFrame,
@@ -212,39 +270,16 @@ def get_daily_transport_across_contour_df(df_transport:pd.DataFrame,
     df_contour['dx'] = dx_for_in_df
     df_contour['transport_m3'] = df_contour['transport'].values * df_contour['dx'].values
     df_contour_daily = df_contour.groupby(['time']).agg(total_transport=('transport_m3', 'sum'),
-                                                        mean_thickness=('mean_thickness', 'mean'),
-                                                        max_distance=('max_distance', 'max'),
-                                                        min_distance=('min_distance', 'min'),
-                                                        max_h=('max_h', 'max'),
-                                                        mean_drhodx=('mean_drhodx', 'mean'))
+                                                        vel_contour=('mean_vel', 'mean'),
+                                                        thickness_contour=('mean_thickness', 'mean'))
     df_contour_daily[f'transport_{str(int(depth_contour))}m'] = df_contour_daily['total_transport'].values / contour_length
     
     i_times = get_time_indices(time, df_contour_daily.index)
     daily_transport_all_days = np.zeros(len(time))
     daily_transport_all_days[i_times] = df_contour_daily[f'transport_{str(int(depth_contour))}m'].values
-    daily_thickness_all_days = np.empty(len(time)) * np.nan
-    daily_thickness_all_days[i_times] = df_contour_daily['mean_thickness'].values
-    daily_max_distance_all_days = np.empty(len(time)) * np.nan
-    daily_max_distance_all_days[i_times] = df_contour_daily['max_distance'].values
-    daily_min_distance_all_days = np.empty(len(time)) * np.nan
-    daily_min_distance_all_days[i_times] = df_contour_daily['min_distance'].values
-    daily_max_h_all_days = np.empty(len(time)) * np.nan
-    daily_max_h_all_days[i_times] = df_contour_daily['max_h'].values
-    daily_drhodx_all_days = np.empty(len(time)) * np.nan
-    daily_drhodx_all_days[i_times] = df_contour_daily['mean_drhodx'].values
-    
-    df_contour_daily_all_days = pd.DataFrame(columns = ['time', 'transport_50m', 'mean_thickness', 'max_distance', 'min_distance', 'max_h', 'mean_drhodx'],
-                                              data=np.array([time, daily_transport_all_days, daily_thickness_all_days, daily_max_distance_all_days,
-                                                    daily_min_distance_all_days, daily_max_h_all_days, daily_drhodx_all_days]).transpose())
+    daily_vel_all_days = np.zeros(len(time))
+    daily_vel_all_days[i_times] = df_contour_daily['vel_contour'].values
+    daily_thickness_all_days = np.zeros(len(time))
+    daily_thickness_all_days[i_times] = df_contour_daily['thickness_contour'].values
 
-    return df_contour_daily_all_days
-
-if __name__ == '__main__':
-    input_dir = 'output/test_114-116E_33-31S/'
-    years = [2017]
-    
-    grid_file = f'{get_dir_from_json("test_data", json_file="input/example_dirs.json")}grid.nc'
-    
-    # lon, lat, h, df_total, dx = read_dswt_transport(input_dir, years, grid_file)
-    
-    # time, f_dswt = read_dswt_occurrence_timeseries(input_dir, years)
+    return time, daily_transport_all_days, daily_vel_all_days, daily_thickness_all_days
