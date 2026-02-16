@@ -7,12 +7,13 @@ import numpy as np
 from datetime import datetime, timedelta
 import os
 import pandas as pd
+import matplotlib.pyplot as plt
 from tools.files import get_files_in_dir
 from tools import log
 from tools.roms import get_z, find_eta_xi_covering_lon_lat_box, convert_roms_u_v_to_u_east_v_north
-from tools.roms import get_eta_xi_along_transect, get_distance_along_transect
+from tools.roms import get_eta_xi_along_transect, get_distance_along_transect, get_eta_xi_of_lon_lat_point
 from tools.seawater_density import calculate_density
-from tools.coordinates import get_bearing_between_points
+from tools.coordinates import get_bearing_between_points, get_distance_between_points
 from tools.buoyancy_flux import calculate_buoyancy_heat_flux, calculate_buoyancy_salt_flux
 from tools.timeseries import get_l_time_range
 
@@ -322,3 +323,46 @@ def select_roms_transect_from_start_end_coordinates(
     transect_ds = add_variables_to_transect_data(transect_ds)
     
     return transect_ds
+
+def get_roms_contour_coordinates(roms_ds:xr.Dataset, lon_range:list, lat_range:list, depth_contour:float):
+    # get contour coordinates
+    l_lon = np.logical_and(roms_ds.lon_rho.values >= lon_range[0], roms_ds.lon_rho.values <= lon_range[1])
+    l_lat = np.logical_and(roms_ds.lat_rho.values >= lat_range[0], roms_ds.lat_rho.values <= lat_range[1])
+    l_range = np.logical_and(l_lon, l_lat)
+    
+    h = np.copy(roms_ds.h.values)
+    h[~l_range] = np.nan
+    
+    ax = plt.axes()
+    cs = ax.contour(roms_ds.lon_rho.values, roms_ds.lat_rho.values, h, levels=[depth_contour])
+    vertices = cs.get_paths()[0].vertices
+    lon = np.array([coords[0] for coords in vertices])
+    lat = np.array([coords[1] for coords in vertices])
+    plt.close()
+    
+    # contour length
+    contour_length = 0
+    for i in range(len(lon)-1):
+        contour_length += get_distance_between_points(lon[i], lat[i], lon[i+1], lat[i+1])
+    
+    return lon, lat, contour_length
+
+def get_roms_ds_along_contour(roms_ds:xr.Dataset, grid_ds:xr.Dataset,
+                              lon:np.ndarray[float], lat:np.ndarray[float]):
+
+    # add dx
+    dx = np.sqrt(1/grid_ds.pm.values*1/grid_ds.pn.values)
+    roms_ds['dx'] = (['eta_rho', 'xi_rho'], dx)
+
+    eta, xi = get_eta_xi_of_lon_lat_point(roms_ds.lon_rho.values, roms_ds.lat_rho.values, lon, lat)
+    contour_coords = list(zip(eta, xi))
+    contour_coords, i_unique = np.unique(contour_coords, axis=0, return_index=True) # remove double coordinates
+    i_sort = np.argsort(i_unique)
+    contour_coords = contour_coords[i_sort]
+    i_unique = i_unique[i_sort]
+
+    etas = xr.DataArray(eta[i_unique], dims='distance') # conversion to xr.DataArray needed to select individual points (rather than grid)
+    xis = xr.DataArray(xi[i_unique], dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later
+    roms_ds_contour = roms_ds.sel(xi_rho=xis, eta_rho=etas)
+    
+    return roms_ds_contour
