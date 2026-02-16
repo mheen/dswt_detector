@@ -2,18 +2,18 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
-from readers.read_ocean_data import select_input_files, load_roms_data, select_roms_subset, read_roms_data
+from readers.read_ocean_data import select_input_files, load_roms_data, select_roms_subset, read_roms_data, get_roms_contour_coordinates, get_roms_ds_along_contour
 from readers.read_meteo_data import load_era5_data, select_era5_subset_along_coordinates
 from tools.roms import get_eta_xi_of_lon_lat_point, convert_roms_u_v_to_u_east_v_north
 from tools.velocity_shore_angles import get_cross_and_along_shelf_velocities
 from tools.timeseries import get_l_time_range
 from transects import read_transects_in_lon_lat_range_from_json
-from tools.timeseries import get_monthly_means
+from tools.timeseries import get_monthly_means, get_time_index
 from tools.coordinates import get_distance_between_points
 from tools.buoyancy_flux import calculate_buoyancy_heat_flux, calculate_buoyancy_salt_flux
 from tools.wind import convert_u_v_to_meteo_vel_dir
 from tools import log
-from tools.files import get_dir_from_json, create_dir_if_does_not_exist
+from tools.files import get_dir_from_json, create_dir_if_does_not_exist, get_files_in_dir
 
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
@@ -38,48 +38,7 @@ def convert_sustr_svstr_to_rho_east_north(roms_ds:xr.Dataset):
     roms_ds['svstr_northward'] = (['ocean_time', 'eta_rho', 'xi_rho'], svstr_northward)
     return roms_ds
 
-def get_roms_contour_coordinates(roms_ds:xr.Dataset, lon_range:list, lat_range:list, depth_contour:float):
-    # get contour coordinates
-    l_lon = np.logical_and(roms_ds.lon_rho.values >= lon_range[0], roms_ds.lon_rho.values <= lon_range[1])
-    l_lat = np.logical_and(roms_ds.lat_rho.values >= lat_range[0], roms_ds.lat_rho.values <= lat_range[1])
-    l_range = np.logical_and(l_lon, l_lat)
-    
-    h = np.copy(roms_ds.h.values)
-    h[~l_range] = np.nan
-    
-    ax = plt.axes()
-    cs = ax.contour(roms_ds.lon_rho.values, roms_ds.lat_rho.values, h, levels=[depth_contour])
-    vertices = cs.get_paths()[0].vertices
-    lon = np.array([coords[0] for coords in vertices])
-    lat = np.array([coords[1] for coords in vertices])
-    plt.close()
-    
-    # contour length
-    contour_length = 0
-    for i in range(len(lon)-1):
-        contour_length += get_distance_between_points(lon[i], lat[i], lon[i+1], lat[i+1])
-    
-    return lon, lat, contour_length
 
-def get_roms_ds_along_contour(roms_ds:xr.Dataset, grid_ds:xr.Dataset,
-                              lon:np.ndarray[float], lat:np.ndarray[float]):
-
-    # add dx
-    dx = np.sqrt(1/grid_ds.pm.values*1/grid_ds.pn.values)
-    roms_ds['dx'] = (['eta_rho', 'xi_rho'], dx)
-
-    eta, xi = get_eta_xi_of_lon_lat_point(roms_ds.lon_rho.values, roms_ds.lat_rho.values, lon, lat)
-    contour_coords = list(zip(eta, xi))
-    contour_coords, i_unique = np.unique(contour_coords, axis=0, return_index=True) # remove double coordinates
-    i_sort = np.argsort(i_unique)
-    contour_coords = contour_coords[i_sort]
-    i_unique = i_unique[i_sort]
-
-    etas = xr.DataArray(eta[i_unique], dims='distance') # conversion to xr.DataArray needed to select individual points (rather than grid)
-    xis = xr.DataArray(xi[i_unique], dims='distance') # naming dimension "distance" here allows coordinate values to be linked to it later
-    roms_ds_contour = roms_ds.sel(xi_rho=xis, eta_rho=etas)
-    
-    return roms_ds_contour
 
 def calculate_surface_ekman_layer(ds_stress_contour:xr.Dataset):
     tau_s = np.sqrt(ds_stress_contour.sustr_eastward.values**2 + ds_stress_contour.svstr_northward.values**2)
@@ -110,6 +69,8 @@ def estimate_us_ub(ds_roms_contour:xr.Dataset, contour_length:float):
     
     Uss = np.zeros(len(ds_roms_contour.distance))
     Usb = np.zeros(len(ds_roms_contour.distance))
+    zss = np.zeros(len(ds_roms_contour.distance))
+    zsb = np.zeros(len(ds_roms_contour.distance))
     
     for i in range(len(ds_roms_contour.distance)):
         surface_layer_extends_to_bottom = False
@@ -144,27 +105,39 @@ def estimate_us_ub(ds_roms_contour:xr.Dataset, contour_length:float):
             raise ValueError(f'Surface cross-shelf velocity equals zero: {u_cross[-1]}')
         
         Uss[i] = np.nansum(u_cross[k:] * delta_z[k:])
+        zss[i] = np.nansum(delta_z[k:])
         
         # --- bottom ---
         if surface_layer_extends_to_bottom == True:
             continue
-        if u_cross[0] < 0:
-            k = (u_cross > 0).argmax()
-            if k == 0: # transition right at bottom (otherwise should not have gotten here at all)
-                k = 1
-        elif u_cross[0] > 0:
-            k = (u_cross < 0).argmax()
-            if k == 0: # transition right at bottom (otherwise should not have gotten here at all)
-                k = 1
-        else:
-            raise ValueError(f'Bottom cross-shelf velocity equals zero: {u_cross[0]}')
         
-        Usb[i] = np.nansum(u_cross[:k] * delta_z[:k])
+        def _find_transition_bottom(start_k):
+            if u_cross[start_k] < 0:
+                k = (u_cross > 0).argmax()
+                if k == 0: # transition right at bottom (otherwise should not have gotten here at all)
+                    k = 1
+            elif u_cross[start_k] > 0:
+                k = (u_cross < 0).argmax()
+                if k == 0: # transition right at bottom (otherwise should not have gotten here at all)
+                    k = 1
+            else:
+                raise ValueError(f'Bottom cross-shelf velocity equals zero: {u_cross[0]}')
+            return k
+        
+        start_k = 0
+        if u_cross[start_k] == 0.0:
+            start_k += 1
+        kb = _find_transition_bottom(start_k)
+        
+        Usb[i] = np.nansum(u_cross[:kb] * delta_z[:kb])
+        zsb[i] = np.nansum(delta_z[:kb])
         
     Uss_total = np.nansum(Uss * ds_roms_contour.dx.values) / contour_length
     Usb_total = np.nansum(Usb * ds_roms_contour.dx.values) / contour_length
+    zss_mean = np.nanmean(zss)
+    zsb_mean = np.nanmean(zsb)
     
-    return Uss_total, Usb_total  
+    return Uss_total, Usb_total, zss_mean, zsb_mean
 
 def calculate_surface_and_bottom_mld(ds_roms_contour:xr.Dataset):
     drho_s = ds_roms_contour.drho_z.values - np.repeat(np.expand_dims(ds_roms_contour.drho_z.values[-1, :], axis=0), len(ds_roms_contour.s_rho), axis=0)
@@ -268,7 +241,7 @@ def calculate_buoyancy_fluxes(ds_flux, depth_range):
     
     return sst, sss, shflux, ssflux, bhf, bwf, bf
 
-def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_input_dir, dswt_input_dir, output_dir,
+def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_input_dir, output_dir,
                                lon_range, lat_range, depth_contour, depth_range_shallow, depth_range_deep):
     '''Writing twice-daily means to reflect the land-seabreeze signal dominant in summer months
        from Rafiq et al. (2020) making the split according to the following times:
@@ -282,14 +255,13 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
     lon_contour, lat_contour, contour_length = get_roms_contour_coordinates(grid_ds, lon_range, lat_range, depth_contour)
     
     columns = ['time', 'wind_vel', 'wind_dir',
-               'dswt_transport', 'dswt_thickness', 'dswt_max_h', 'dswt_max_distance', 'dswt_min_distance', 'dswt_drhodx',
                'sst_sh', 'sss_sh', 'shflux_sh', 'ssflux_sh',
                'bhflux_sh', 'bwflux_sh', 'bflux_sh',
                'sst_dp', 'sss_dp', 'shflux_dp', 'ssflux_dp',
                'bhflux_dp', 'bwflux_dp', 'bflux_dp',
                'Tes', 'Teb', 'hes', 'heb',
                'mld_s', 'mld_b', 'ri_bulk',
-               'Uss', 'Usb']
+               'Uss', 'Usb', 'zss', 'zsb']
     
     for year in years:
         input_dir = f'{model_input_dir}{year}/'
@@ -309,10 +281,6 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
                 date_range = [time_last+timedelta(days=1), datetime(year, 12, 31)]
         else:
             date_range = [datetime(year, 1, 1), datetime(year, 12, 31)]
-        
-        # load DSWT data (yearly data)
-        df_dswt = pd.read_csv(f'{dswt_input_dir}dswt_timeseries_{year}.csv')
-        dswt_time = np.array([pd.to_datetime(d) for d in df_dswt['time'].values])
         
         # load wind data (yearly data)
         wind_ds = load_era5_data(wind_input_dir, str(year))
@@ -337,15 +305,6 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
             l_time_sb = get_l_time_range(times, day + timedelta(hours=1), day + timedelta(hours=15))
             ds_roms_contour_lb = ds_roms_contour.sel(ocean_time=l_time_lb).mean(dim='ocean_time')
             ds_roms_contour_sb = ds_roms_contour.sel(ocean_time=l_time_sb).mean(dim='ocean_time')
-            
-            # get daily DSWT data
-            df_dswt_day = df_dswt.iloc[np.where(dswt_time == day)[0][0]]
-            dswt_transport = df_dswt_day[f'transport_{str(int(depth_contour))}m'] / (24*60*60) # m2/s to match other transport estimates
-            dswt_thickness = df_dswt_day['mean_thickness']
-            dswt_max_h = df_dswt_day['max_h']
-            dswt_max_distance = df_dswt_day['max_distance']
-            dswt_min_distance = df_dswt_day['min_distance']
-            dswt_drhodx = df_dswt_day['mean_drhodx']
             
             # Load surface stress data
             sflux_file = select_input_files(f'{input_dir}shflux/',
@@ -420,14 +379,13 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
             Tes_sb, Teb_sb = calculate_surface_bottom_ekman_transport(ds_roms_stress_contour_sb, ds_roms_contour_sb, contour_length)
             
             # calculate cross-shelf transport
-            Uss_lb, Usb_lb = estimate_us_ub(ds_roms_contour_lb, contour_length)
-            Uss_sb, Usb_sb = estimate_us_ub(ds_roms_contour_sb, contour_length)
+            Uss_lb, Usb_lb, zss_lb, zsb_lb = estimate_us_ub(ds_roms_contour_lb, contour_length)
+            Uss_sb, Usb_sb, zss_sb, zsb_sb = estimate_us_ub(ds_roms_contour_sb, contour_length)
             
             # get data columns
             data_lb = [
                 day + timedelta(hours=15),
                 wind_vel_lb, wind_dir_lb,
-                dswt_transport, dswt_thickness, dswt_max_h, dswt_max_distance, dswt_min_distance, dswt_drhodx,
                 sst_lb_sh, sss_lb_sh, shflux_lb_sh, ssflux_lb_sh,
                 bhf_lb_sh, bwf_lb_sh, bf_lb_sh,
                 sst_lb_dp, sss_lb_dp, shflux_lb_dp, ssflux_lb_dp,
@@ -435,13 +393,12 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
                 Tes_lb, Teb_lb,
                 np.nanmean(hes_lb), np.nanmean(heb_lb),
                 mld_s_lb, mld_b_lb, ri_lb,
-                Uss_lb, Usb_lb
+                Uss_lb, Usb_lb, zss_lb, zsb_lb
             ]
             
             data_sb = [
                 day + timedelta(hours=1),
                 wind_vel_sb, wind_dir_sb,
-                dswt_transport, dswt_thickness, dswt_max_h, dswt_max_distance, dswt_min_distance, dswt_drhodx,
                 sst_sb_sh, sss_sb_sh, shflux_sb_sh, ssflux_sb_sh,
                 bhf_sb_sh, bwf_sb_sh, bf_sb_sh,
                 sst_sb_dp, sss_sb_dp, shflux_sb_dp, ssflux_sb_dp,
@@ -449,7 +406,7 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
                 Tes_sb, Teb_sb,
                 np.nanmean(hes_sb), np.nanmean(heb_sb),
                 mld_s_sb, mld_b_sb, ri_sb,
-                Uss_sb, Usb_lb
+                Uss_sb, Usb_sb, zss_sb, zsb_sb
             ]
             
             df = pd.DataFrame(data=[data_sb, data_lb], columns=columns)
@@ -458,71 +415,132 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
                 df.to_csv(output_path, mode='a', header=False, index=False)
             else:
                 df.to_csv(output_path, index=False)
+    
+def read_analyses_from_multiple_csvs(input_dir:str, years:list) -> pd.DataFrame:
+    df = None
+    
+    for year in years:
+        input_path = f'{input_dir}analysis_{year}.csv'
+        if not os.path.exists(input_path):
+            continue
+        
+        df_y = pd.read_csv(input_path)
+        
+        if df is None:
+            df = df_y
+            continue
+        
+        df = pd.concat([df, df_y], ignore_index=True)
+        
+    return df
 
-def get_slice_info(select_date, model_input_dir, grid_file):
-    '''Temporary function for debugging purposes'''
+def write_cross_shelf_transport_analysis(model, year, model_input_dir, grid_file, output_path,
+                                         lon_range, lat_range):
     file_preface = f'{model}_'
-    input_dir = f'{model_input_dir}{select_date.year}/'
     
     grid_ds = xr.load_dataset(grid_file)
-    lon_contour, lat_contour, contour_length = get_roms_contour_coordinates(grid_ds, lon_range, lat_range, depth_contour)
+    grid_ds = select_roms_subset(grid_ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
     
-    roms_files = select_input_files(input_dir, file_preface=file_preface, date_range=[select_date, select_date])
-    file = roms_files[0]
+    input_dir = f'{model_input_dir}{year}/'
+    
+    date_range = [datetime(year, 1, 1), datetime(year, 12, 31)]
+    
+    roms_files = select_input_files(input_dir, file_preface=file_preface, date_range=date_range)
+    roms_files.sort()
+    
+    n_days = (datetime(year+1, 1, 1) - datetime(year, 1, 1)).days
+    time = []
+    for n in range(n_days):
+        time.append(datetime(year, 1, 1) + timedelta(days=n))
+    time = np.array(time)
+    
+    data_var_3d = np.empty((len(time), len(grid_ds.eta_rho), len(grid_ds.xi_rho))) * np.nan
+    data_var_4d = np.empty((len(time), len(grid_ds.s_rho), len(grid_ds.eta_rho), len(grid_ds.xi_rho))) * np.nan
+    
+    ds_cross = xr.Dataset(
+        data_vars={
+            "u_cross": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "v_along": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "u_bar": (("ocean_time", "eta_rho", "xi_rho"), np.copy(data_var_3d)),
+            "u_prime": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "L_vc": (("ocean_time", "eta_rho", "xi_rho"), np.copy(data_var_3d)),
+            "u_cross_lb": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "v_along_lb": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "u_bar_lb": (("ocean_time", "eta_rho", "xi_rho"), np.copy(data_var_3d)),
+            "u_prime_lb": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "L_vc_lb": (("ocean_time", "eta_rho", "xi_rho"), np.copy(data_var_3d)),
+            "u_cross_sb": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "v_along_sb": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "u_bar_sb": (("ocean_time", "eta_rho", "xi_rho"), np.copy(data_var_3d)),
+            "u_prime_sb": (("ocean_time", "s_rho", "eta_rho", "xi_rho"), np.copy(data_var_4d)),
+            "L_vc_sb": (("ocean_time", "eta_rho", "xi_rho"), np.copy(data_var_3d)),
+            "lon_rho": (("eta_rho", "xi_rho"), grid_ds.lon_rho.values),
+            "lat_rho": (("eta_rho", "xi_rho"), grid_ds.lat_rho.values),
+            "h": (("eta_rho", "xi_rho"), grid_ds.h.values),
+            "z_rho": (("s_rho", "eta_rho", "xi_rho"), np.empty((len(grid_ds.s_rho), len(grid_ds.eta_rho), len(grid_ds.xi_rho))) * np.nan)
+                },
+        coords={
+            "ocean_time": time,
+            "s_rho": grid_ds.s_rho.values,
+            "eta_rho": grid_ds.eta_rho.values,
+            "xi_rho": grid_ds.xi_rho.values
+            }
+        )
+    
+    for i, file in enumerate(roms_files):
+        # Load ROMS data
+        ds_roms = load_roms_data(file, grid_file)
+        ds_roms = select_roms_subset(ds_roms, time_range=None, lon_range=lon_range, lat_range=lat_range)
+        u_cross, u_along = get_cross_and_along_shelf_velocities(ds_roms.h.values, ds_roms.u_eastward.values, ds_roms.v_northward.values)
+        # add cross and along-shelf velocity to ds_roms
+        ds_roms['u_cross'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], u_cross)
+        ds_roms['u_along'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], u_along)
+        # add depth-mean cross-shelf velocity and u_cross'
+        delta_z_4d = np.repeat(np.expand_dims(ds_roms.delta_z.values, axis=0), len(ds_roms.ocean_time), axis=0)
+        h_3d = np.repeat(np.expand_dims(ds_roms.h.values, axis=0), len(ds_roms.ocean_time), axis=0)
+        u_cross_bar = 1/h_3d * np.nansum(u_cross * delta_z_4d, axis=1)
+        u_cross_prime = ds_roms.u_cross.values - np.repeat(np.expand_dims(u_cross_bar, axis=1), len(ds_roms.s_rho), axis=1)
+        ds_roms['u_cross_bar'] = (['ocean_time', 'eta_rho', 'xi_rho'], u_cross_bar)
+        ds_roms['u_cross_prime'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], u_cross_prime)
+        # add depth-integrated absolute value of u_cross' - L_vc
+        L_vc = 1/h_3d * np.nansum(delta_z_4d * abs(u_cross_prime), axis=1)
+        ds_roms['L_vc'] = (['ocean_time', 'eta_rho', 'xi_rho'], L_vc)
+        
+        # get twice-daily mean data (reflecting land- and seabreeze times) as well as daily-mean
+        times = np.array([pd.to_datetime(d) for d in ds_roms.ocean_time.values])
+        day = datetime(times[0].year, times[0].month, times[0].day, 0, 0)
+        l_time_lb = get_l_time_range(times, day + timedelta(hours=15), day + timedelta(hours=24))
+        l_time_sb = get_l_time_range(times, day + timedelta(hours=1), day + timedelta(hours=15))
+        ds_roms_lb = ds_roms.sel(ocean_time=l_time_lb).mean(dim='ocean_time')
+        ds_roms_sb = ds_roms.sel(ocean_time=l_time_sb).mean(dim='ocean_time')
+        ds_roms_d = ds_roms.mean(dim='ocean_time')
+        
+        roms_file_time = datetime.strptime(os.path.basename(file)[len(file_preface):][:8], '%Y%m%d')
+        i_time = get_time_index(time, roms_file_time)
+        
+        # add data to new netcdf
+        if i == 0:
+            ds_cross['z_rho'].values = ds_roms['z_rho'].values
+        
+        ds_cross['u_cross'].values[i_time, :, :, :] = ds_roms_d['u_cross'].values
+        ds_cross['v_along'].values[i_time, :, :, :] = ds_roms_d['u_along'].values
+        ds_cross['u_bar'].values[i_time, :, :] = ds_roms_d['u_cross_bar'].values
+        ds_cross['u_prime'].values[i_time, :, :, :] = ds_roms_d['u_cross_prime'].values
+        ds_cross['L_vc'].values[i_time, :, :] = ds_roms_d['L_vc'].values
+        
+        ds_cross['u_cross_lb'].values[i_time, :, :, :] = ds_roms_lb['u_cross'].values
+        ds_cross['v_along_lb'].values[i_time, :, :, :] = ds_roms_lb['u_along'].values
+        ds_cross['u_bar_lb'].values[i_time, :, :] = ds_roms_lb['u_cross_bar'].values
+        ds_cross['u_prime_lb'].values[i_time, :, :, :] = ds_roms_lb['u_cross_prime'].values
+        ds_cross['L_vc_lb'].values[i_time, :, :] = ds_roms_lb['L_vc'].values
 
-    # Load ROMS data
-    ds_roms = load_roms_data(file, grid_file)
-    u_cross, u_along = get_cross_and_along_shelf_velocities(ds_roms.h.values, ds_roms.u_eastward.values, ds_roms.v_northward.values)
-    # add cross and along-shelf velocity to ds_roms
-    ds_roms['u_cross'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], u_cross)
-    ds_roms['u_along'] = (['ocean_time', 's_rho', 'eta_rho', 'xi_rho'], u_along)
-    # extract data along contour only
-    ds_roms_contour = get_roms_ds_along_contour(ds_roms, grid_ds, lon_contour, lat_contour)
-    # get twice-daily mean data (reflecting land- and seabreeze times)
-    times = np.array([pd.to_datetime(d) for d in ds_roms_contour.ocean_time.values])
-    day = datetime(times[0].year, times[0].month, times[0].day, 0, 0)
-    l_time_lb = get_l_time_range(times, day + timedelta(hours=15), day + timedelta(hours=24))
-    l_time_sb = get_l_time_range(times, day + timedelta(hours=1), day + timedelta(hours=15))
-    ds_roms_contour_lb = ds_roms_contour.sel(ocean_time=l_time_lb).mean(dim='ocean_time')
-    ds_roms_contour_sb = ds_roms_contour.sel(ocean_time=l_time_sb).mean(dim='ocean_time')
-    
-    # Load surface stress data
-    sflux_file = select_input_files(f'{input_dir}shflux/',
-                                    file_preface=f'{file_preface}{day.strftime("%Y%m%d")}_')
-    ds_roms_stress = read_roms_data(sflux_file[0], grid_file, None)
-    ds_roms_stress = convert_sustr_svstr_to_rho_east_north(ds_roms_stress)
-    stress_cross, stress_along = get_cross_and_along_shelf_velocities(ds_roms_stress.h.values, ds_roms_stress.sustr_eastward.values, ds_roms_stress.svstr_northward.values)
-    # add cross and along-shelf wind stress to ds_roms_stress
-    ds_roms_stress['stress_cross'] = (['ocean_time', 'eta_rho', 'xi_rho'], stress_cross)
-    ds_roms_stress['stress_along'] = (['ocean_time', 'eta_rho', 'xi_rho'], stress_along)
-    ds_roms_stress_contour = get_roms_ds_along_contour(ds_roms_stress, grid_ds, lon_contour, lat_contour)
-    # get twice-daily mean data (reflecting land- and seabreeze times)
-    times_stress = np.array([pd.to_datetime(d) for d in ds_roms_stress_contour.ocean_time.values])
-    l_time_lb = get_l_time_range(times_stress, day + timedelta(hours=15), day + timedelta(hours=24))
-    l_time_sb = get_l_time_range(times_stress, day + timedelta(hours=1), day + timedelta(hours=15))
-    ds_roms_stress_lb = ds_roms_stress.sel(ocean_time=l_time_lb).mean(dim='ocean_time')
-    ds_roms_stress_sb = ds_roms_stress.sel(ocean_time=l_time_sb).mean(dim='ocean_time')
-    ds_roms_stress_contour_lb = ds_roms_stress_contour.sel(ocean_time=l_time_lb).mean(dim='ocean_time')
-    ds_roms_stress_contour_sb = ds_roms_stress_contour.sel(ocean_time=l_time_sb).mean(dim='ocean_time')
-    
-    # calculate layer depths
-    hes_lb = calculate_surface_ekman_layer(ds_roms_stress_contour_lb)
-    hes_sb = calculate_surface_ekman_layer(ds_roms_stress_contour_sb)
-    heb_lb = calculate_bottom_ekman_layer(ds_roms_contour_lb)
-    heb_sb = calculate_bottom_ekman_layer(ds_roms_contour_sb)
-    mld_s_lb, mld_b_lb = calculate_surface_and_bottom_mld(ds_roms_contour_lb)
-    mld_s_sb, mld_b_sb = calculate_surface_and_bottom_mld(ds_roms_contour_sb)
-    ri_bulk_lb = calculate_bulk_richardson_number(ds_roms_contour_lb)
-    ri_bulk_sb = calculate_bulk_richardson_number(ds_roms_contour_sb)
-    ri_lb = calculate_gradient_richardson_number(ds_roms_contour_lb)
-    ri_sb = calculate_gradient_richardson_number(ds_roms_contour_sb)
-    
-    # calculate cross-shelf Ekman transport
-    Tes_lb, Teb_lb = calculate_surface_bottom_ekman_transport(ds_roms_stress_contour_lb, ds_roms_contour_lb, contour_length)
-    Tes_sb, Teb_sb = calculate_surface_bottom_ekman_transport(ds_roms_stress_contour_sb, ds_roms_contour_sb, contour_length)
-    
-    Uss_lb, Usb_lb = estimate_us_ub(ds_roms_contour_lb, contour_length)
-    Uss_sb, Usb_sb = estimate_us_ub(ds_roms_contour_sb, contour_length)
+        ds_cross['u_cross_sb'].values[i_time, :, :, :] = ds_roms_sb['u_cross'].values
+        ds_cross['v_along_sb'].values[i_time, :, :, :] = ds_roms_sb['u_along'].values
+        ds_cross['u_bar_sb'].values[i_time, :, :] = ds_roms_sb['u_cross_bar'].values
+        ds_cross['u_prime_sb'].values[i_time, :, :, :] = ds_roms_sb['u_cross_prime'].values
+        ds_cross['L_vc_sb'].values[i_time, :, :] = ds_roms_sb['L_vc'].values
+        
+    ds_cross.to_netcdf(output_path)
             
 if __name__ == '__main__':
     
@@ -541,14 +559,14 @@ if __name__ == '__main__':
     lon_range = [114.0, 116.0]
     lat_range = [-33.0, -31.0]
     
-    years = np.arange(2017, 2018)
+    years = np.arange(2000, 2024)
     
     depth_contour = 50.0
     depth_range_shallow = [0, 20]
     depth_range_deep = [50, 300] # LC
     
+    write_cross_shelf_transport_analysis(model, 2017, model_input_dir, grid_file, f'{output_dir}/cross-shelf/ucross_2017.nc',
+                                         lon_range, lat_range)
+    
     write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_input_dir, dswt_input_dir, output_dir,
                                lon_range, lat_range, depth_contour, depth_range_shallow, depth_range_deep)
-    
-    
-    
