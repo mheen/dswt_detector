@@ -5,7 +5,7 @@ sys.path.insert(1, parent)
 from tools.timeseries import get_l_time_range
 from tools.files import get_dir_from_json
 
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, peak_widths
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -82,26 +82,15 @@ class DswtEvents:
                 )
             
             z = df_timeseries['f_dswt'].values
-            i_peaks, _ = find_peaks(z, height=0.2)
-            i_troughs, _ = find_peaks(1-z)
+            i_peaks, properties = find_peaks(z, height=0.2, width=(1, 20)) # width specifies minimum and maximum width
+            i_left = np.floor(properties['left_ips']).astype(int)
+            i_right = np.ceil(properties['right_ips']).astype(int)
             
             n = len(i_peaks)
             
             for j in range(n):
-                i_troughs_min_peak = i_troughs-i_peaks[j]
-                l_subzero = i_troughs_min_peak < 0
-                l_abovezero = i_troughs_min_peak > 0
-                if np.sum(l_subzero) > 0:
-                    i_left = i_troughs[np.where(i_troughs_min_peak == np.nanmax(i_troughs_min_peak[l_subzero]))[0][0]]
-                else:
-                    i_left = i_peaks[j]-1
-                if np.sum(l_abovezero) > 0:
-                    i_right = i_troughs[np.where(i_troughs_min_peak == np.nanmin(i_troughs_min_peak[l_abovezero]))[0][0]]
-                else:
-                    i_right = i_peaks[j]+1
-
-                start_event = df_timeseries.index[i_left]
-                end_event = df_timeseries.index[i_right]
+                start_event = df_timeseries.index[i_left[j]]
+                end_event = df_timeseries.index[i_right[j]]
                 duration_event = (end_event-start_event).days
                 
                 l_time_event = get_l_time_range(df_timeseries.index, start_event, end_event)
@@ -130,5 +119,5 @@ class DswtEvents:
     
 if __name__ == '__main__':
     input_dir = f'{get_dir_from_json("output")}'
-    years = np.arange(2005, 2006)
+    years = np.arange(2017, 2018)
     dswt_events = DswtEvents.read_from_multiple_csv_files(input_dir, years)
