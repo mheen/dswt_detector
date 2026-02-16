@@ -118,8 +118,8 @@ def plot_basic_map(ax:plt.axes, lon_range=None, lat_range=None,
         coast = cfeature.GSHHSFeature(scale="full")
         ax.add_feature(coast, linewidth=1, edgecolor='k', facecolor='#d2d2d2', zorder=2)
     else:
-        ax.add_feature(cfeature.LAND, edgecolor='k', facecolor='#d2d2d2')
-        ax.add_feature(cfeature.COASTLINE)
+        ax.add_feature(cfeature.LAND, edgecolor='k', facecolor='#d2d2d2', zorder=10)
+        ax.add_feature(cfeature.COASTLINE, zorder=10)
     
     ax = add_grid(ax, meridians, parallels, xmarkers, ymarkers, draw_grid)
 
