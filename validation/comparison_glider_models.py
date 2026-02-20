@@ -11,6 +11,7 @@ from tools.files import get_dir_from_json, get_files_in_dir, get_daily_files_in_
 from tools.config import read_config, Config
 from tools.timeseries import get_l_time_range
 from tools.coordinates import get_unique_coordinates
+from plot_tools.general import add_subtitle
 import xarray as xr
 import numpy as np
 import pandas as pd
@@ -99,14 +100,15 @@ def plot_comparison(glider_transect_ds, transect_ds, transect_name,
     glider_h = glider_transect_ds.h.values
     ax1 = plt.subplot(2, 1, 1)
     c1 = ax1.pcolormesh(glider_x, glider_z, glider_d, cmap=cmap, vmin=vmin, vmax=vmax)
-    ax1.scatter(x_glider, z_glider, marker='x', c='w', s=30)
-    ax1.scatter(x_glider, z_glider, marker='x', c='k', s=20)
+    ax1.scatter(x_glider, z_glider, marker='o', c='w', s=40)
+    ax1.scatter(x_glider, z_glider, marker='o', c='k', s=20)
     ax1.fill_between(glider_x, -110, glider_h, color='#d2d2d2', edgecolor='k')
     ax1.set_ylim([-100, 0])
     ax1.set_ylabel('Depth (m)')
     ax1.set_yticks([0, -25, -50, -75, -100])
     ax1.set_yticklabels([0, 25, 50, 75, 100])
     ax1.set_xlim([glider_x[0], glider_x[-1]])
+    add_subtitle(ax1, '(a) Ocean glider', location='lower left')
     
     # model transect
     x = transect_ds.distance.values
@@ -118,8 +120,8 @@ def plot_comparison(glider_transect_ds, transect_ds, transect_name,
     h = -transect_ds.h.values
     ax2 = plt.subplot(2, 1, 2)
     c2 = ax2.pcolormesh(x, z, d, cmap=cmap, vmin=vmin, vmax=vmax)
-    ax2.scatter(x_model, z_model, marker='x', c='w', s=30)
-    ax2.scatter(x_model, z_model, marker='x', c='k', s=20)
+    ax2.scatter(x_model, z_model, marker='o', c='w', s=40)
+    ax2.scatter(x_model, z_model, marker='o', c='k', s=20)
     ax2.fill_between(x, -110, h, color='#d2d2d2', edgecolor='k')
     ax2.set_ylim([-100, 0])
     ax2.set_ylabel('Depth (m)')
@@ -127,22 +129,27 @@ def plot_comparison(glider_transect_ds, transect_ds, transect_name,
     ax2.set_yticklabels([0, 25, 50, 75, 100])
     ax2.set_xlim([glider_x[0], glider_x[-1]])
     ax2.set_xlabel('Distance along transect (m)')
+    add_subtitle(ax2, '(b) CWA-ROMS', location='lower left')
     
     # colorbar
-    ll, bb, ww, hh = ax2.get_position().bounds
-    cax = fig.add_axes([ll, bb-0.16, ww, 0.04])
-    cbar = plt.colorbar(c2, cax=cax, orientation='horizontal')
+    l1, b1, w1, h1 = ax1.get_position().bounds
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    cax = fig.add_axes([l1 + w1 + 0.02, b2, 0.02, b1 + h1 - b2])
+    cbar = plt.colorbar(c2, cax=cax)
+    # cax = fig.add_axes([ll, bb-0.16, ww, 0.04])
+    # cbar = plt.colorbar(c2, cax=cax, orientation='horizontal')
     cbar.set_label('Density (kg m$^{-3}$)')
     
     # maps with transect
     l1, b1, w1, h1 = ax1.get_position().bounds
-    axm1 = fig.add_axes([l1+0.005, b1+0.02, w1/4, h1/2], projection=ccrs.PlateCarree())
+    axm1 = fig.add_axes([l1+0.84*w1, b1+0.64*h1, w1/5, h1/3], projection=ccrs.PlateCarree())
     plot_basic_map(axm1, [115.0, 116.0], [-32.5, -31.5])
     axm1.plot(glider_transect_ds.lon.values, glider_transect_ds.lat.values, '-', color='#C70039', linewidth=1)
     axm1.set_xticks([])
     axm1.set_yticks([])
     
-    axm2 = fig.add_axes([ll+0.005, bb+0.02, ww/4, hh/2], projection=ccrs.PlateCarree())
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    axm2 = fig.add_axes([l2+0.84*w2, b2+0.64*h2, w2/5, h2/3], projection=ccrs.PlateCarree())
     plot_basic_map(axm2, [115.0, 116.0], [-32.5, -31.5])
     axm2.plot(transect_ds.lon_rho.values, transect_ds.lat_rho.values, '-', color='#C70039', linewidth=1)
     axm2.set_xticks([])
