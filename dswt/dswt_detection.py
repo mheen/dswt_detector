@@ -107,7 +107,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
             np.array([np.nan]), np.nan, np.nan, np.array([np.nan]), np.array([np.nan]))
 
 
-def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, config:Config, sflux_ds=None) -> pd.DataFrame:
+def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:dict, config:Config) -> pd.DataFrame:
     
     transect_names = list(transects.keys())
     
@@ -115,33 +115,21 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
                                      columns=['time', 'transect',
                                               'f_dswt', 'vel', 'thickness', 'transport',
                                               'distance', 'lon', 'lat', 'h',
-                                              'drhodx_mean', 'drhodx_min', 'drhos_mean', 'drhos_min',
-                                              'bhflux', 'bsflux', 'bflux'])
+                                              'drhodx_mean', 'drhodx_min', 'drhos_mean', 'drhos_min'])
     time = pd.to_datetime(roms_ds.ocean_time.values[0]).date()
     row = 0
     for i, transect_name in enumerate(transect_names):
         eta = transects[transect_name]['eta']
         xi = transects[transect_name]['xi']
         
-        transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi, sflux_ds=sflux_ds)
+        transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
         (t_dswt, f_dswt, vel, thickness, transport, distance, lon, lat, h, drhodx_mean, drhodx_min, drhos_mean, drhos_min) = determine_dswt_along_transect(transect_ds, config)
-        
-        if sflux_ds is not None:
-            i_coast = np.where(~np.isnan(transect_ds.density.values))[2][0]
-            bhflux = np.nanmean(transect_ds.bhflux.values[:, i_coast])
-            bsflux = np.nanmean(transect_ds.bsflux.values[:, i_coast])
-            bflux = np.nanmean(transect_ds.bflux.values[:, i_coast])
-        else:
-            bhflux = np.nan
-            bsflux = np.nan
-            bflux = np.nan
         
         for j in range(len(transport)):
             df_transects_dswt.loc[row] = [time, transect_name, f_dswt[j],
                                         vel[j], thickness[j], transport[j],
                                         distance[j], lon[j], lat[j], h[j],
-                                        drhodx_mean, drhodx_min, drhos_mean[j], drhos_min[j],
-                                        bhflux, bsflux, bflux]
+                                        drhodx_mean, drhodx_min, drhos_mean[j], drhos_min[j]]
             row += 1
         
     return df_transects_dswt

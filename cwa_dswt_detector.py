@@ -2,7 +2,7 @@ from transects import generate_transects_json_file, read_transects_in_lon_lat_ra
 from guis.transect_removal import interactive_transect_removal
 from guis.transect_addition import interactive_transect_addition, write_added_transect_keys_to_file
 
-from readers.read_ocean_data import load_roms_data, select_input_files, load_roms_sflux_data
+from readers.read_ocean_data import load_roms_data, select_input_files
 from readers.read_dswt_output import get_domain_str, get_dswt_daily_timeseries_df, read_dswt_transport, get_daily_transport_across_contour_df
 
 from main_plots import plot_dswt_timeseries, plot_dswt_map
@@ -39,12 +39,6 @@ model_input_dir = get_dir_from_json('cwa')
 grid_file = f'{model_input_dir}grid.nc' # set to None if grid information in output files
 grid_ds = xr.open_dataset(grid_file) # loading grid: do not change!
 file_preface = f'{model}_' # set to None if files don't have a string preface
-
-# --- Surface fluxes input file info
-use_sfluxes = True # set to False if not available (can ignore model_sflux_subdir in that case)
-# Important: if adding sflux data note that the file format is expected to follow:
-# {model_input_dir}{year}{model_sflux_subdir}{file_preface}%Y%m%d_<rest-of-filename>.nc
-model_sflux_subdir = 'shflux/'
 
 # --- Processing info
 # Determine if transport should be interpolated to cover full grid range
@@ -188,14 +182,7 @@ for year in years:
     for file in roms_files:
         # Load ROMS data
         ds_roms = load_roms_data(file, grid_file, drop_vars=drop_vars)
-        if use_sfluxes == True:
-            sflux_file = select_input_files(f'{input_dir}{model_sflux_subdir}',
-                                            file_preface=f'{file_preface}{pd.to_datetime(ds_roms.ocean_time.values[0]).strftime("%Y%m%d")}_')
-            ds_sflux = load_roms_sflux_data(sflux_file[0], grid_file=grid_file, drop_vars=drop_vars)
-        else:
-            ds_sflux = None
-        
-        df_transects_dswt = determine_daily_dswt_along_multiple_transects(ds_roms, transects, config, sflux_ds=ds_sflux)
+        df_transects_dswt = determine_daily_dswt_along_multiple_transects(ds_roms, transects, config)
         
         if os.path.exists(output_dswt):
             df_transects_dswt.to_csv(output_dswt, mode='a', header=False, index=False)
