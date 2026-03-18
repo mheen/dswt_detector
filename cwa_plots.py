@@ -99,20 +99,6 @@ def _split_into_wind_dirs(df_analysis:pd.DataFrame):
     
     return l_southerly, l_northerly, l_onshore, l_offshore
 
-def _get_mean_distance_over_which_drhodx_determined(grid_ds:xr.Dataset, transects_file='input/transects/cwa_transects.json', h=100):
-    transects = read_transects_in_lon_lat_range_from_json(transects_file, [114, 116], [-33, -31])
-    lon = grid_ds.lon_rho.values
-    lat = grid_ds.lat_rho.values
-    distance = []
-    for t in list(transects.keys()):
-        etas = transects[t]['eta']
-        xis = transects[t]['xi']
-        h = grid_ds.h.values[etas, xis]
-        dh = abs(h - 100)
-        i = np.where(dh == min(dh))[0][0]
-        distance.append(get_distance_between_points(lon[etas[i], xis[i]], lat[etas[i], xis[i]], lon[etas[0], xis[0]], lat[etas[0], xis[0]]))
-    return np.nanmean(distance)
-
 def get_l_seabreeze_landbreeze(df_analysis:pd.DataFrame) -> tuple[np.ndarray[bool], np.ndarray[bool]]:
     hours = np.array([pd.to_datetime(d).hour for d in df_analysis['time'].values])
     l_sb = hours == seabreeze_hour
@@ -134,6 +120,21 @@ def convert_df_to_daily_means(df_analysis:pd.DataFrame):
     df_daily = (pd.concat([df_lb, df_sb]).groupby(['time']).sum() / 24).reset_index()
     
     return df_daily
+
+def _get_slope_estimate(grid_ds:xr.Dataset, transects_file='input/transects/cwa_transects.json', max_depth=100):
+    transects = read_transects_in_lon_lat_range_from_json(transects_file, [114, 116], [-33, -31])
+    lon = grid_ds.lon_rho.values
+    lat = grid_ds.lat_rho.values
+    slope = []
+    for t in list(transects.keys()):
+        etas = transects[t]['eta']
+        xis = transects[t]['xi']
+        h = grid_ds.h.values[etas, xis]
+        dh = abs(h - max_depth)
+        i = np.where(dh == min(dh))[0][0]
+        distance = get_distance_between_points(lon[etas[i], xis[i]], lat[etas[i], xis[i]], lon[etas[0], xis[0]], lat[etas[0], xis[0]])
+        slope.append((h[i] - h[0]) / distance)
+    return np.nanmean(slope)
 
 # ---------------------------------------------------
 # Plots
@@ -717,11 +718,18 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     
     x = np.arange(-2.0, 0.01, 0.01) * 10**-5
     
+    # note: for both the gravity current and Nof velocity estimates
+    # I am using delta_rho ~ drho/dx delta_x
+    # but this is not strictly the delta_rho meant here.
+    # instead, delta_rho should be the difference between
+    # the dense plume and ambient water.
+    
     # gravity current estimate
-    # u = sqrt(g * delta_rho/rho0 * l)
-    # from Bouffard et al. (2024)
-    l = 39000
-    y_grav = np.sqrt(G / RHO0 * abs(x) * l)
+    # u = sqrt(g * delta_rho/rho0 * h)
+    dx = np.sqrt(1/grid_ds.pm.values*1/grid_ds.pn.values)
+    dx = np.nanmean(dx[grid_ds.h.values <= 100])
+    h_dswt = np.nanmean(df_dswt.thickness.values)
+    y_grav = np.sqrt(G / RHO0 * abs(x) * dx * h_dswt)
     ax3.plot(x*10**5, y_grav, '-k', label='grav.')
     
     # geostrophic velocity estimate
@@ -730,6 +738,12 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     h = 50
     y_geo = 1/6 * h/F * G/RHO0 * x
     ax3.plot(x*10**5, y_geo, '--k', label='geo.')
+    
+    # Nof downslope current estimate
+    # u = 0.2 * g * s * delta_rho / (f * rho0)
+    slope = _get_slope_estimate(grid_ds)
+    y_nof = 0.2 * G * slope * abs(x) * dx / (F * RHO0)
+    ax3.plot(x*10**5, y_nof, ':k', label='Nof')
     
     # legend
     ax3.legend(loc='upper right')
@@ -1798,7 +1812,6 @@ if __name__ == '__main__':
     # --- WCS DSWT ----
     plot_overall_transport_map_with_monthly_climatology(df_dswt, df_analysis, df_transport, grid_ds, output_path=f'{plot_dir}dswt_climatology_map.jpg')
     
-    # L = _get_mean_distance_over_which_drhodx_determined(grid_ds)
     plot_dswt_forcing(df_dswt, df_analysis, grid_ds, output_path=f'{plot_dir}dswt_forcing.jpg')
     plot_dswt_per_wind_dir(df_dswt, df_analysis, output_path=f'{plot_dir}dswt_wind_dir.jpg')
     
