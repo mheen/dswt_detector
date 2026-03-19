@@ -416,6 +416,9 @@ def plot_us_ub_dynamics(df_analysis:pd.DataFrame, output_path=None, show=False):
     ax1.axvspan(datetime(2017, 1, 1), datetime(2017, 1, 31), color=color_summer, zorder=0)
     ax1.axvspan(datetime(2017, 12, 1), datetime(2017, 12, 31), color=color_summer,zorder=0)
     ax1.axvspan(datetime(2017, 5, 1), datetime(2017, 7, 31), color=color_winter, zorder=0)
+    
+    ax1.text(1.01, 0.2, 'offshore', rotation=90, va='center', transform=ax1.transAxes)
+    ax1.text(1.01, 0.7, 'onshore', rotation=90, va='center', transform=ax1.transAxes)
 
     # monthly bottom timeseries
     ax2 = plt.subplot(3, 5, (6, 8))
@@ -430,6 +433,9 @@ def plot_us_ub_dynamics(df_analysis:pd.DataFrame, output_path=None, show=False):
     ax2.axvspan(datetime(2017, 1, 1), datetime(2017, 1, 31), color=color_summer, zorder=0)
     ax2.axvspan(datetime(2017, 12, 1), datetime(2017, 12, 31), color=color_summer, zorder=0)
     ax2.axvspan(datetime(2017, 5, 1), datetime(2017, 7, 31), color=color_winter, zorder=0)
+    
+    ax2.text(1.01, 0.25, 'offshore', rotation=90, va='center', transform=ax2.transAxes)
+    ax2.text(1.01, 0.75, 'onshore', rotation=90, va='center', transform=ax2.transAxes)
     
     # --- u versus wind ----
     xlim_wv = [0, 15]
@@ -465,7 +471,7 @@ def plot_us_ub_dynamics(df_analysis:pd.DataFrame, output_path=None, show=False):
     add_subtitle(ax4, '(d) Offshore')
     ax4.set_facecolor(color_summer)
     
-    ax4.legend(loc='upper left', bbox_to_anchor=(1.05, 1.02))
+    ax4.legend(loc='lower right', bbox_to_anchor=(1.0, 0.0))
     
     # winter upwelling
     ax5 = plt.subplot(3, 5, 9)
@@ -819,7 +825,7 @@ def plot_dswt_per_wind_dir(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, outpu
     else:
         plt.close()
 
-def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, output_path=None, show=False):
+def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, highlight_dates=None, output_path=None, show=False):
     df_analysis = convert_df_to_daily_means(df_analysis)
     
     time = np.array([pd.to_datetime(d) for d in df_dswt['time'].values])
@@ -838,7 +844,7 @@ def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFram
     ax1.plot(time[l_time], df_dswt['transport_50m'].values[l_time]/(24*60*60), '-', color=color_transport, linewidth=2)
     ax1.set_ylabel('Transport (m$^2$ s$^{-1}$)')
     ax1.set_ylim([0, 1.2])
-    plot_monthly_grid(ax1, 2017)
+    plot_monthly_grid(ax1, 2017, alpha=0.7)
     ax1.set_xlim(xlim)
     ax1.set_xticks(xticks)
     ax1.set_xticklabels(xticklabels)
@@ -864,7 +870,7 @@ def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFram
     ax0.quiver(time[l_time][~l_disruptive], wind_vel[~l_disruptive], wind_u[~l_disruptive], wind_v[~l_disruptive], wind_vel[~l_disruptive], cmap='Blues', angles='uv', scale=40, width=0.003)
     ax0.quiver(time[l_time][l_disruptive], wind_vel[l_disruptive], wind_u[l_disruptive], wind_v[l_disruptive], wind_vel[l_disruptive], cmap='Reds', angles='uv', scale=40, width=0.003)
     ax0.set_ylim([0, 18])
-    plot_monthly_grid(ax0, 2017)
+    plot_monthly_grid(ax0, 2017, alpha=0.7)
     ax0.set_xlim(xlim)
     ax0.set_xticklabels([])
     ax0.set_yticks(np.arange(0, 20, 5))
@@ -874,6 +880,10 @@ def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFram
     # fill disruptive area
     ax1.fill_between(time[l_time], 0,1, where=l_disruptive, transform=ax1.get_xaxis_transform(), color=color_pos, alpha=0.1, ec='None')
     
+    if highlight_dates is not None:
+        l_highlight = get_l_time_range(time[l_time], highlight_dates[0], highlight_dates[1])
+        ax1.fill_between(time[l_time], 0, 1, where=l_highlight, transform=ax1.get_xaxis_transform(), facecolor='None', ec='k')
+    
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
     if show == True:
@@ -881,11 +891,12 @@ def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFram
     else:
         plt.close()
 
-def plot_dswt_event(df_transport:pd.DataFrame, start_date:datetime, end_date:datetime,
-                    df_analysis:WindTimeseries, vmin=20.0, vmax=23.0, cmap='RdYlBu_r',
+def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
+                    df_analysis:WindTimeseries, transect_name='t240',
+                    vmin=20.0, vmax=23.0, cmap='RdYlBu_r',
                     output_path=None, show=False):
     
-    transect_name = 't240'
+    dates = np.array([pd.to_datetime(d) for d in dates])
     
     time = np.array([pd.to_datetime(t) for t in df_transport['time'].values])
 
@@ -895,7 +906,7 @@ def plot_dswt_event(df_transport:pd.DataFrame, start_date:datetime, end_date:dat
                                                           [114.0, 116.0], [-33.0, -31.0])
     config = read_config('cwa')
     
-    fig = plt.figure(figsize=(11, 8))
+    fig = plt.figure(figsize=(8, 10))
     plt.subplots_adjust(wspace=0.05, hspace=0.05)
     plt.rcParams['font.size'] = 10
     
@@ -934,6 +945,8 @@ def plot_dswt_event(df_transport:pd.DataFrame, start_date:datetime, end_date:dat
         
         u[~l_dswt] = np.nan
         v[~l_dswt] = np.nan
+        u[h > 100] = np.nan
+        v[h > 100] = np.nan
         u_thin = u[::thin, ::thin]
         v_thin = v[::thin, ::thin]
         
@@ -1006,66 +1019,106 @@ def plot_dswt_event(df_transport:pd.DataFrame, start_date:datetime, end_date:dat
         
         return q
         
-    # maps
-    ax1 = plt.subplot(5, 4, (1, 13), projection=ccrs.PlateCarree())
-    c, _, roms_ds1 = _plot_dswt_map(ax1, start_date - timedelta(days=2))
+    # --- maps
+    ax1 = plt.subplot(10, 3, (1, 10), projection=ccrs.PlateCarree())
+    c, _, roms_ds1 = _plot_dswt_map(ax1, dates[0])
     
-    ax2 = plt.subplot(5, 4, (2, 14), projection=ccrs.PlateCarree())
-    _, _, roms_ds2 = _plot_dswt_map(ax2, start_date + timedelta(days=1))
+    ax2 = plt.subplot(10, 3, (2, 11), projection=ccrs.PlateCarree())
+    _, _, roms_ds2 = _plot_dswt_map(ax2, dates[1])
     ax2.set_yticklabels([])
     
-    ax3 = plt.subplot(5, 4, (3, 15), projection=ccrs.PlateCarree())
-    _, _, roms_ds3 = _plot_dswt_map(ax3, start_date + timedelta(days=2))
+    ax3 = plt.subplot(10, 3, (3, 12), projection=ccrs.PlateCarree())
+    _, _, roms_ds3 = _plot_dswt_map(ax3, dates[2])
     ax3.set_yticklabels([])
     
-    ax4 = plt.subplot(5, 4, (4, 16), projection=ccrs.PlateCarree())
-    _, _, roms_ds4 = _plot_dswt_map(ax4, start_date + timedelta(days=3))
-    ax4.set_yticklabels([])
+    # new row
+    ax4 = plt.subplot(10, 3, (16, 25), projection=ccrs.PlateCarree())
+    _, _, roms_ds4 = _plot_dswt_map(ax4, dates[3])
     
-    # transect
-    ax6 = plt.subplot(5, 4, 17)
-    _ = _plot_dswt_transect(ax6, transect_name, roms_ds1, ax1)
-    add_subtitle(ax6, f'(a) {(start_date - timedelta(days=2)).strftime("%d-%m-%Y")}', location='lower left')
+    ax5 = plt.subplot(10, 3, (17, 26), projection=ccrs.PlateCarree())
+    _, _, roms_ds5 = _plot_dswt_map(ax5, dates[4])
+    ax5.set_yticklabels([])
     
-    ax8 = plt.subplot(5, 4, 18)
-    _ = _plot_dswt_transect(ax8, transect_name, roms_ds2, ax2)
-    ax8.set_yticklabels([])
-    ax8.set_ylabel('')
-    add_subtitle(ax8, f'(b) {(start_date + timedelta(days=1)).strftime("%d-%m-%Y")}', location='lower left')
+    ax6 = plt.subplot(10, 3, (18, 27), projection=ccrs.PlateCarree())
+    _, _, roms_ds6 = _plot_dswt_map(ax6, dates[5])
+    ax6.set_yticklabels([])
     
-    ax10 = plt.subplot(5, 4, 19)
-    _ = _plot_dswt_transect(ax10, transect_name, roms_ds3, ax3)
-    ax10.set_yticklabels([])
-    ax10.set_ylabel('')
-    add_subtitle(ax10, f'(c) {(start_date + timedelta(days=2)).strftime("%d-%m-%Y")}', location='lower left')
+    # --- transects
+    ax11 = plt.subplot(10, 3, 13)
+    _ = _plot_dswt_transect(ax11, transect_name, roms_ds1, ax1)
+    add_subtitle(ax11, f'(a) {(dates[0]).strftime("%d-%m-%Y")}', location='lower left')
     
-    ax12 = plt.subplot(5, 4, 20)
-    q2 = _plot_dswt_transect(ax12, transect_name, roms_ds4, ax4)
-    ax12.set_yticklabels([])
-    ax12.set_ylabel('')
-    add_subtitle(ax12, f'(d) {(start_date + timedelta(days=3)).strftime("%d-%m-%Y")}', location='lower left')
+    ax22 = plt.subplot(10, 3, 14)
+    _ = _plot_dswt_transect(ax22, transect_name, roms_ds2, ax2)
+    ax22.set_yticklabels([])
+    ax22.set_ylabel('')
+    add_subtitle(ax22, f'(b) {dates[1].strftime("%d-%m-%Y")}', location='lower left')
+    
+    ax33 = plt.subplot(10, 3, 15)
+    _ = _plot_dswt_transect(ax33, transect_name, roms_ds3, ax3)
+    ax33.set_yticklabels([])
+    ax33.set_ylabel('')
+    add_subtitle(ax33, f'(c) {dates[2].strftime("%d-%m-%Y")}', location='lower left')
+    
+    # new row
+    ax44 = plt.subplot(10, 3, 28)
+    _ = _plot_dswt_transect(ax44, transect_name, roms_ds4, ax4)
+    add_subtitle(ax44, f'(d) {dates[3].strftime("%d-%m-%Y")}', location='lower left')
+    
+    ax55 = plt.subplot(10, 3, 29)
+    _ = _plot_dswt_transect(ax55, transect_name, roms_ds5, ax5)
+    ax55.set_yticklabels([])
+    ax55.set_ylabel('')
+    add_subtitle(ax55, f'(e) {dates[4].strftime("%d-%m-%Y")}', location='lower left')
+    
+    ax66 = plt.subplot(10, 3, 30)
+    q = _plot_dswt_transect(ax66, transect_name, roms_ds6, ax6)
+    ax66.set_yticklabels([])
+    ax66.set_ylabel('')
+    add_subtitle(ax66, f'(f) {dates[5].strftime("%d-%m-%Y")}', location='lower left')
+    
+    # move transect plots up
+    l11, _, w11, h11 = ax11.get_position().bounds
+    l22, _, w22, h22 = ax22.get_position().bounds
+    l33, _, w33, h33 = ax33.get_position().bounds
+    
+    _, b1, _, _ = ax1.get_position().bounds
+    bnew1 = b1 - h11 - 0.03
+    ax11.set_position([l11, bnew1, w11, h11])
+    ax22.set_position([l22, bnew1, w22, h22])
+    ax33.set_position([l33, bnew1, w33, h33])
+    
+    # move second row down
+    l4, _, w4, h4 = ax4.get_position().bounds
+    l5, _, w5, h5 = ax5.get_position().bounds
+    l6, _, w6, h6 = ax6.get_position().bounds
+    
+    _, b11, _, _ = ax11.get_position().bounds
+    bnew = b11 - h4 - 0.08
+    ax4.set_position([l4, bnew, w4, h4])
+    ax5.set_position([l5, bnew, w5, h5])
+    ax6.set_position([l6, bnew, w6, h6])
+    
+    # move second row transect plots
+    l44, _, w44, h44 = ax44.get_position().bounds
+    l55, _, w55, h55 = ax55.get_position().bounds
+    l66, _, w66, h66 = ax66.get_position().bounds
     
     l4, b4, w4, h4 = ax4.get_position().bounds
-    # move transect plots up
-    l6, b6, w6, h6 = ax6.get_position().bounds
-    l8, b8, w8, h8 = ax8.get_position().bounds
-    l10, b10, w10, h10 = ax10.get_position().bounds
-    l12, b12, w12, h12 = ax12.get_position().bounds
-    
-    bnew = b4 - h6 - 0.04
-    ax6.set_position([l6, bnew, w6, h6])
-    ax8.set_position([l8, bnew, w8, h8])
-    ax10.set_position([l10, bnew, w10, h10])
-    ax12.set_position([l12, bnew, w12, h12])
+    bnew2 = b4 - h44 - 0.03
+    ax44.set_position([l44, bnew2, w44, h44])
+    ax55.set_position([l55, bnew2, w55, h55])
+    ax66.set_position([l66, bnew2, w66, h66])
     
     # colorbar
-    l12, b12, w12, h12 = ax12.get_position().bounds
-    cax = fig.add_axes([l4 + w4 + 0.03, b12, 0.02, b4 + h4 - b12])
-    cbar = plt.colorbar(c, cax=cax)
+    l44, b44, w44, h44 = ax44.get_position().bounds
+    l66, _, w66, h66 = ax66.get_position().bounds
+    cax = fig.add_axes([l44, b44-0.1, l66 + w66 - l44, 0.02])
+    cbar = plt.colorbar(c, cax=cax, orientation='horizontal')
     cbar.set_label('Temperature ($^o$C)')
     
     # quiver
-    qkey = ax12.quiverkey(q2, X=0.14, Y=0.08, U=0.2, label='0.2 m s$^{-1}$', labelpos='E', transform=ax12.transAxes)
+    qkey = ax66.quiverkey(q, X=0.55, Y=-0.8, U=0.2, label='0.2 m s$^{-1}$', labelpos='E', transform=ax11.transAxes)
     
     if output_path is not None:
         plt.savefig(output_path, bbox_extra_artists=(qkey,), bbox_inches='tight', dpi=300)
@@ -1767,7 +1820,7 @@ if __name__ == '__main__':
     # Results
     # ---------------------------------------------------
     
-    # --- WCS data ---
+    # # --- WCS data ---
     ucross_ds = xr.load_dataset(f'{input_dir_analysis}cross-shelf/ucross_2017.nc')
     df_dswt_2017 = pd.read_csv(f'{input_dir_processed}dswt_timeseries_2017.csv')
     df_analysis_2017 = pd.read_csv(f'{input_dir_analysis}analysis_2017.csv')
@@ -1796,14 +1849,14 @@ if __name__ == '__main__':
     plot_dswt_forcing(df_dswt, df_analysis, grid_ds, output_path=f'{plot_dir}dswt_forcing.jpg')
     plot_dswt_per_wind_dir(df_dswt, df_analysis, output_path=f'{plot_dir}dswt_wind_dir.jpg')
     
-    # events
-    plot_dswt_timeseries_evolution(df_dswt_2017, df_analysis_2017, output_path=f'{plot_dir}dswt_timeseries_evolution.jpg')
+    event_start = datetime(2017, 6, 17)
+    event_end = datetime(2017, 6, 22)
+    plot_dswt_timeseries_evolution(df_dswt_2017, df_analysis_2017, highlight_dates=[event_start, event_end],
+                                   output_path=f'{plot_dir}dswt_timeseries_evolution.jpg')
 
     plot_yearly_events(dswt_events, years, output_path=f'{plot_dir}dswt_event_statistics.jpg')
-
-    # typical event
-    # plot_dswt_event(df_transport_2017_nointerp, datetime(2017, 6, 19), datetime(2017, 6, 22),
-    #                 df_analysis_2017, output_path=f'{plot_dir}dswt_typical_event.jpg')
+    plot_dswt_event(df_transport_2017_nointerp, np.arange(event_start, event_end + timedelta(days=1), timedelta(days=1)),
+                    df_analysis_2017, output_path=f'{plot_dir}dswt_event_example.jpg')
     
     # --- WCS cross-shelf export comparison with DSWT ---
     plot_overall_export_comparison(ucross_ds, df_dswt_2017, output_path=f'{plot_dir}dswt_export_contribution.jpg')
