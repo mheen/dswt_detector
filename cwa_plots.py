@@ -267,9 +267,9 @@ def plot_u_bar_seasonality_maps(ucross_ds:xr.Dataset,
     plot_contours(ucross_ds.lon_rho.values, ucross_ds.lat_rho.values, ucross_ds.h.values,
                   lon_range_default, lat_range_default,
                   ax=ax4, show=False,
-                  clevels=[50, 100, 200],
-                  linewidths=[2.0, 1.0, 1.0])
-    add_subtitle(ax4, r'(a) January $\bar{u}$')
+                  clevels=[50, 100, 200, 1000],
+                  linewidths=[2.0, 1.0, 1.0, 1.0])
+    add_subtitle(ax4, r'(a) January $\bar{u}$', location='upper right')
     
     ax5 = plt.subplot(1, 2, 2, projection=ccrs.PlateCarree())
     plot_basic_map(ax5, lon_range_default, lat_range_default,
@@ -278,10 +278,10 @@ def plot_u_bar_seasonality_maps(ucross_ds:xr.Dataset,
     plot_contours(ucross_ds.lon_rho.values, ucross_ds.lat_rho.values, ucross_ds.h.values,
                   lon_range_default, lat_range_default,
                   ax=ax5, show=False,
-                  clevels=[50, 100, 200],
-                  linewidths=[2.0, 1.0, 1.0])
+                  clevels=[50, 100, 200, 1000],
+                  linewidths=[2.0, 1.0, 1.0, 1.0])
     ax5.set_yticklabels([])
-    add_subtitle(ax5, r'(b) June $\bar{u}$')
+    add_subtitle(ax5, r'(b) June $\bar{u}$', location='upper right')
     
     # colorbar
     l5n, b5n, w5n, h5n = ax5.get_position().bounds
@@ -664,51 +664,84 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     df_analysis = df_analysis.loc[l_filter]
     df_dswt = df_dswt[l_filter]
     
+    bhflux = df_analysis['bflux_sh'].values * 10**5
+    dsst = df_analysis['sst_sh'].values - df_analysis['sst_dp'].values
+    drhodx = df_dswt['drhodx'].values * 10**5
+    transport = df_dswt['transport_50m'].values / (24*60*60)
+    vel = df_dswt['transport_50m'].values / df_dswt['thickness_50m'].values / (24*60*60)
+    
+    n_samples = len(vel)
+    n_bins = 30
+    vmin = 0
+    vmax = 0.015
+    
     fig = plt.figure(figsize=(8, 8))
     plt.subplots_adjust(wspace=0.3)
     
     ax1 = plt.subplot(2, 2, 1)
-    ax1.scatter(df_analysis['bflux_sh'].values * 10**5, df_dswt['drhodx'].values * 10**5, marker='x', s=20, c=color_neg)
+    # ax1.scatter(df_analysis['bflux_sh'].values * 10**5, df_dswt['drhodx'].values * 10**5, marker='x', s=20, c=color_neg)
+    density1, bhflux_bins, drhodx_bins = np.histogram2d(bhflux, drhodx, bins=n_bins)
+    density1[density1 == 0] = np.nan
+    ax1.pcolormesh(bhflux_bins, drhodx_bins, density1.transpose() / n_samples, cmap='turbo', vmin=vmin, vmax=vmax)
+    
     ax1.plot([0,0], [-2, 0], '-k', linewidth=0.7)
     ax1.set_xlabel('Buoyancy flux (10$^{-5}$ kg m$^{-2}$ s$^{-1}$)')
     ax1.set_ylabel(r'$\frac{\partial\rho}{\partial x}$ (10$^{-5}$ kg m$^{-3}$ m$^{-1}$)')
     ax1.set_xlim([-4, 2])
     ax1.set_ylim([-2, 0.0])
     add_subtitle(ax1, r'(a) Buoyancy vs $\frac{\partial\rho}{\partial x}$')
-    r1, p1 = stats.pearsonr(df_analysis['bflux_sh'].values * 10**5, df_dswt['drhodx'].values * 10**5)
+    r1, p1 = stats.pearsonr(bhflux, drhodx)
     ax1.text(-4, -0.25, f'  $R$={np.round(r1, 2)}, $p$<0.05', va='top')
     
-    ax4 = plt.subplot(2, 2, 2)
-    ax4.scatter(df_analysis['sst_sh'].values - df_analysis['sst_dp'].values, df_dswt['drhodx'].values * 10**5, marker='x', s=20, c=color_neg)
-    ax4.set_xlabel('SST inshore - SST offshore ($^o$C)')
-    ax4.set_yticklabels([])
-    ax4.set_xlim([-6, 0])
-    ax4.set_ylim([-2, 0.0])
-    add_subtitle(ax4, r'(b) SST difference vs $\frac{\partial\rho}{\partial x}$')
-    r4, p4 = stats.pearsonr(df_analysis['sst_sh'].values - df_analysis['sst_dp'].values, df_dswt['drhodx'].values * 10**5)
-    ax4.text(-6, -0.25, f'  $R$={np.round(r4, 2)}, $p$<0.05', va='top')
+    ax2 = plt.subplot(2, 2, 2)
+    # ax2.scatter(df_analysis['sst_sh'].values - df_analysis['sst_dp'].values, df_dswt['drhodx'].values * 10**5, marker='x', s=20, c=color_neg)
+    density2, dsst_bins, drhodx_bins = np.histogram2d(dsst, drhodx, bins=n_bins)
+    density2[density2 == 0] = np.nan
+    ax2.pcolormesh(dsst_bins, drhodx_bins, density2.transpose() / n_samples, cmap='turbo', vmin=vmin, vmax=vmax)
     
-    ax2 = plt.subplot(2, 2, 3)
-    ax2.scatter(df_dswt['drhodx'].values * 10**5, df_dswt['transport_50m'].values / (24*60*60), marker='x', s=20, c=color_neg)
-    ax2.set_xlabel(r'$\frac{\partial\rho}{\partial x}$ (10$^{-5}$ kg m$^{-3}$ m$^{-1}$)')
-    ax2.set_ylabel('Transport (m$^2$ s$^{-1}$)')
-    ax2.set_xlim([-2, 0])
-    ax2.set_ylim([0, 1.4])
-    add_subtitle(ax2, r'(c) $\frac{\partial\rho}{\partial x}$ vs transport')
+    ax2.set_xlabel('SST inshore - SST offshore ($^o$C)')
+    ax2.set_yticklabels([])
+    ax2.set_xlim([-6, 0])
+    ax2.set_ylim([-2, 0.0])
+    add_subtitle(ax2, r'(b) SST difference vs $\frac{\partial\rho}{\partial x}$')
+    r2, p2 = stats.pearsonr(dsst, drhodx)
+    ax2.text(-6, -0.25, f'  $R$={np.round(r2, 2)}, $p$<0.05', va='top')
     
-    ax3 = plt.subplot(2, 2, 4)
-    ax3.scatter(df_dswt['drhodx'].values * 10**5, df_dswt['transport_50m'].values / df_dswt['thickness_50m'].values / (24*60*60), marker='x', s=20, c=color_neg)
+    ax3 = plt.subplot(2, 2, 3)
+    # ax3.scatter(df_dswt['drhodx'].values * 10**5, df_dswt['transport_50m'].values / (24*60*60), marker='x', s=20, c=color_neg)
+    density3, drhodx_bins, transport_bins = np.histogram2d(drhodx, transport, bins=n_bins)
+    density3[density3 == 0] = np.nan
+    ax3.pcolormesh(drhodx_bins, transport_bins, density3.transpose() / n_samples, cmap='turbo', vmin=vmin, vmax=vmax)
+    
     ax3.set_xlabel(r'$\frac{\partial\rho}{\partial x}$ (10$^{-5}$ kg m$^{-3}$ m$^{-1}$)')
-    ax3.set_ylabel('Velocity (m s$^{-1}$)')
+    ax3.set_ylabel('Transport (m$^2$ s$^{-1}$)')
     ax3.set_xlim([-2, 0])
-    ax3.set_ylim([0, 0.13])
-    add_subtitle(ax3, r'(d) $\frac{\partial\rho}{\partial x}$ vs velocity')
+    ax3.set_ylim([0, 1.4])
+    add_subtitle(ax3, r'(c) $\frac{\partial\rho}{\partial x}$ vs transport')
     
+    ax4 = plt.subplot(2, 2, 4)
+    density4, drhodx_bins, vel_bins = np.histogram2d(drhodx, vel, bins=n_bins)
+    density4[density4 == 0] = np.nan
+    c = ax4.pcolormesh(drhodx_bins, vel_bins, density4.transpose() / n_samples, cmap='turbo', vmin=vmin, vmax=vmax)
+    ax4.set_xlabel(r'$\frac{\partial\rho}{\partial x}$ (10$^{-5}$ kg m$^{-3}$ m$^{-1}$)')
+    ax4.set_ylabel('Velocity (m s$^{-1}$)')
+    ax4.set_xlim([-2, 0])
+    ax4.set_ylim([0, 0.13])
+    add_subtitle(ax4, r'(d) $\frac{\partial\rho}{\partial x}$ vs velocity')
+    
+    # colorbar
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    l4, b4, w4, h4 = ax4.get_position().bounds
+    cax = fig.add_axes([l4 + w4 + 0.02, b4, 0.02, b2 + h2 - b4])
+    cbar = plt.colorbar(c, cax=cax)
+    cbar.set_label('Samples (fraction)')
+    
+    # --- theoretical estimates
     x = np.arange(-2.0, 0.01, 0.01) * 10**-5
     
     # note: for both the gravity current and Nof velocity estimates
     # I am using delta_rho ~ drho/dx delta_x
-    # but this is not strictly the delta_rho meant here.
+    # this is not strictly the delta_rho meant here.
     # instead, delta_rho should be the difference between
     # the dense plume and ambient water.
     
@@ -718,28 +751,24 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     dx = np.nanmean(dx[grid_ds.h.values <= 100])
     h_dswt = np.nanmean(df_dswt.thickness.values)
     y_grav = np.sqrt(G / RHO0 * abs(x) * dx * h_dswt)
-    ax3.plot(x*10**5, y_grav, '-k', label='grav.')
+    ax4.plot(x*10**5, y_grav, '-w', linewidth=2)
+    ax4.plot(x*10**5, y_grav, '-k', label='grav.')
     
     # geostrophic velocity estimate
     # u = 1/6 * h/f * g/rho0 * drho/dx
     # from Gawarkiewicz & Chapman (1995)
     h = 50
     y_geo = 1/6 * h/F * G/RHO0 * x
-    ax3.plot(x*10**5, y_geo, '--k', label='geo.')
-    
-    # Nof downslope current estimate
-    # u = 0.2 * g * s * delta_rho / (f * rho0)
-    slope = _get_slope_estimate(grid_ds)
-    y_nof = 0.2 * G * slope * abs(x) * dx / (F * RHO0)
-    ax3.plot(x*10**5, y_nof, ':k', label='Nof')
+    ax4.plot(x*10**5, y_geo, '-w', linewidth=2)
+    ax4.plot(x*10**5, y_geo, '--k', label='geo.')
     
     # legend
-    ax3.legend(loc='upper right')
+    ax4.legend(loc='upper right')
     
     # map inset panel b
-    l4, b4, w4, h4 = ax4.get_position().bounds
-    ax44 = fig.add_axes([l4+0.75*w4, b4-0.01, 0.2*w4, 0.4*h4], projection=ccrs.PlateCarree())
-    plot_basic_map(ax44, lon_range_default, lat_range_default)
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    ax22 = fig.add_axes([l2+0.75*w2, b2-0.01, 0.2*w2, 0.4*h2], projection=ccrs.PlateCarree())
+    plot_basic_map(ax22, lon_range_default, lat_range_default)
     deep_shallow = np.empty(grid_ds.h.shape)*np.nan
     l_shallow = grid_ds.h <= 20.
     l_deep = np.logical_and(grid_ds.h >= 50, grid_ds.h <= 300)
@@ -747,7 +776,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     deep_shallow[l_deep] = 1
     
     cmap = ListedColormap(['#9794be', '#d7789d'])
-    ax44.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, deep_shallow, vmin=0, vmax=1, cmap=cmap, zorder=1)
+    ax22.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, deep_shallow, vmin=0, vmax=1, cmap=cmap, zorder=1)
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -1820,7 +1849,7 @@ if __name__ == '__main__':
     # Results
     # ---------------------------------------------------
     
-    # # --- WCS data ---
+    # --- WCS data ---
     ucross_ds = xr.load_dataset(f'{input_dir_analysis}cross-shelf/ucross_2017.nc')
     df_dswt_2017 = pd.read_csv(f'{input_dir_processed}dswt_timeseries_2017.csv')
     df_analysis_2017 = pd.read_csv(f'{input_dir_analysis}analysis_2017.csv')
