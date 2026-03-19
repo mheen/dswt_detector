@@ -17,6 +17,24 @@ import xarray as xr
 import pandas as pd
 import os
 
+def read_df_from_multiple_csvs(input_dir:str, years:list, file_preface:str) -> pd.DataFrame:
+    df = None
+    
+    for year in years:
+        input_path = f'{input_dir}{file_preface}{year}.csv'
+        if not os.path.exists(input_path):
+            continue
+        
+        df_y = pd.read_csv(input_path)
+        
+        if df is None:
+            df = df_y
+            continue
+        
+        df = pd.concat([df, df_y], ignore_index=True)
+        
+    return df
+
 def get_domain_str(lon_range:list, lat_range:list) -> str:
     lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
     lon_range_unit = 'E' if lon_range[0] > 0 else 'W'
@@ -57,6 +75,7 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
     min_distance = np.array([])
     max_distance = np.array([])
     min_h = np.array([])
+    mean_h = np.array([])
     max_h = np.array([])
     drhos = np.array([])
     
@@ -75,6 +94,7 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
             min_distance = np.concatenate((min_distance, np.empty(len(time_year))*np.nan))
             max_distance = np.concatenate((max_distance, np.empty(len(time_year))*np.nan))
             min_h = np.concatenate((min_h, np.empty(len(time_year))*np.nan))
+            mean_h = np.concatenate((mean_h, np.empty(len(time_year))*np.nan))
             max_h = np.concatenate((max_h, np.empty(len(time_year))*np.nan))
             drhos = np.concatenate((drhos, np.empty(len(time_year))*np.nan))
             continue
@@ -94,6 +114,7 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
         min_distance_year = np.empty(len(time_year)) * np.nan
         max_distance_year = np.empty(len(time_year)) * np.nan
         min_h_year = np.empty(len(time_year)) * np.nan
+        mean_h_year = np.empty(len(time_year)) * np.nan
         max_h_year = np.empty(len(time_year)) * np.nan
         drhos_year = np.empty(len(time_year)) * np.nan
         for t in range(len(time_org)):
@@ -106,6 +127,7 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
             min_distance_year[i_time] = df_daily_min['distance'].values[t]
             max_distance_year[i_time] = df_daily_max['distance'].values[t]
             min_h_year[i_time] = df_daily_min['h'].values[t]
+            mean_h_year[i_time] = df_daily_mean['h'].values[t]
             max_h_year[i_time] = df_daily_max['h'].values[t]
             drhos_year[i_time] = df_daily_mean['drhos_mean'].values[t]
         
@@ -118,14 +140,15 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
         min_distance = np.concatenate((min_distance, min_distance_year))
         max_distance = np.concatenate((max_distance, max_distance_year))
         min_h = np.concatenate((min_h, min_h_year))
+        mean_h = np.concatenate((mean_h, mean_h_year))
         max_h = np.concatenate((max_h, max_h_year))
         drhos = np.concatenate((drhos, drhos_year))
     
-    data = np.array([time, f_dswt, vel, thickness, transport, drhodx, min_distance, max_distance, min_h, max_h, drhos])
-    columns = ['time', 'f_dswt', 'vel', 'thickness', 'transport', 'drhodx', 'min_distance', 'max_distance', 'min_h', 'max_h', 'drhos']
+    data = np.array([time, f_dswt, vel, thickness, transport, drhodx, min_distance, max_distance, min_h, mean_h, max_h, drhos])
+    columns = ['time', 'f_dswt', 'vel', 'thickness', 'transport', 'drhodx', 'min_distance', 'max_distance', 'min_h', 'mean_h', 'max_h', 'drhos']
     
     df_timeseries = pd.DataFrame(data=data.transpose(), columns=columns)
-        
+    
     return df_timeseries
 
 def read_dswt_transport(input_dir:str, years:list, grid_ds:xr.Dataset) -> xr.Dataset:

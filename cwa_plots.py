@@ -1,4 +1,4 @@
-from readers.read_dswt_output import get_transport_map, read_dswt_transport
+from readers.read_dswt_output import get_transport_map, read_dswt_transport, read_df_from_multiple_csvs
 from readers.read_ocean_data import load_roms_data, select_roms_transect_from_known_coordinates, select_input_files, select_roms_subset
 from readers.read_meteo_data import WindTimeseries
 from dswt.dswt_events import DswtEvents
@@ -69,24 +69,6 @@ G = 9.81 # m2/s
 # ---------------------------------------------------
 # non-plotting functions
 # ---------------------------------------------------
-def read_df_from_multiple_csvs(input_dir:str, years:list, file_preface:str) -> pd.DataFrame:
-    df = None
-    
-    for year in years:
-        input_path = f'{input_dir}{file_preface}{year}.csv'
-        if not os.path.exists(input_path):
-            continue
-        
-        df_y = pd.read_csv(input_path)
-        
-        if df is None:
-            df = df_y
-            continue
-        
-        df = pd.concat([df, df_y], ignore_index=True)
-        
-    return df
-
 def _split_into_wind_dirs(df_analysis:pd.DataFrame):
     wind_dir = df_analysis['wind_dir'].values
     l_southerly = np.logical_and(wind_dir >= lim_southerly[0], wind_dir <= lim_southerly[1])
@@ -1178,8 +1160,8 @@ def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, sho
     plt.rcParams['font.size'] = 12
     
     # n events
-    ylim1 = [0, 70]
-    yticks1 = np.arange(0, 70, 10)
+    ylim1 = [0, 30]
+    yticks1 = np.arange(0, 40, 10)
     ax1 = plt.subplot(5, 1, 1)
     plot_histogram_multiple_years(time, dswt_events.n_events, ylabel='Events (#)',
                                   ylim=ylim1, color=color_neg, ax=ax1)
@@ -1189,8 +1171,8 @@ def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, sho
     add_subtitle(ax1, '(a) DSWT events')
     
     # duration
-    ylim2 = [0, 22]
-    yticks2 = np.arange(0, 25, 5)
+    ylim2 = [0, 10]
+    yticks2 = np.arange(0, 12, 2)
     ax2 = plt.subplot(5, 1, 2)
     plot_histogram_multiple_years(time, duration, yerr=duration_std,
                                   color=color_transport, err_color=color_transport_std,
@@ -1215,8 +1197,8 @@ def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, sho
     add_subtitle(ax3, '(c) DSWT event velocities')
     
     # thickness
-    ylim4 = [8, 30]
-    yticks4 = np.arange(10, 35, 5)
+    ylim4 = [0, 20]
+    yticks4 = np.arange(0, 25, 5)
     ax4 = plt.subplot(5, 1, 4)
     plot_histogram_multiple_years(time, mean_thickness, yerr=mean_thickness_std,
                                   color=color_transport, err_color=color_transport_std,
@@ -1228,7 +1210,7 @@ def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, sho
     add_subtitle(ax4, '(d) DSWT event thicknesses')
     
     # h
-    ylim5 = [40, 100]
+    ylim5 = [0, 70]
     yticks5 = np.arange(40, 120, 20)
     ax5 = plt.subplot(10, 1, (9, 10))
     plot_histogram_multiple_years(time, mean_h, yerr=mean_h_std,
@@ -1791,7 +1773,6 @@ if __name__ == '__main__':
     df_analysis_2017 = pd.read_csv(f'{input_dir_analysis}analysis_2017.csv')
     df_transport_2017 = pd.read_csv(f'{input_dir_processed}dswt_transport_2017.csv')
     df_transport_2017_nointerp = pd.read_csv(f'{input_dir_processed}dswt_transport_2017_no-interp.csv')
-    df_timeseries_2017 = pd.read_csv(f'{input_dir_processed}dswt_timeseries_2017.csv')
     
     grid_ds = xr.load_dataset(grid_file)
     
@@ -1799,8 +1780,8 @@ if __name__ == '__main__':
     df_dswt = read_df_from_multiple_csvs(input_dir_processed, years, 'dswt_timeseries_')
     df_transport = read_df_from_multiple_csvs(input_dir_processed, years, 'dswt_transport_')
     
-    dswt_events = DswtEvents.read_from_multiple_csv_files(input_dir, years)
-    dswt_events_2017 = DswtEvents.read_from_multiple_csv_files(input_dir, [2017])
+    dswt_events = DswtEvents.calculate_from_df_timeseries(df_dswt, years, req_months=[5, 6, 7])
+    dswt_events_2017 = DswtEvents.calculate_from_df_timeseries(df_dswt_2017, [2017], req_months=[5, 6, 7])
     
     # --- WCS general cross-shelf transport ---
     plot_u_bar_overview(ucross_ds, output_path=f'{plot_dir}ubar_overview.jpg')
@@ -1818,12 +1799,14 @@ if __name__ == '__main__':
     # events
     plot_dswt_timeseries_evolution(df_dswt_2017, df_analysis_2017, output_path=f'{plot_dir}dswt_timeseries_evolution.jpg')
 
-    # # typical event
+    plot_yearly_events(dswt_events, years, output_path=f'{plot_dir}dswt_event_statistics.jpg')
+
+    # typical event
     # plot_dswt_event(df_transport_2017_nointerp, datetime(2017, 6, 19), datetime(2017, 6, 22),
     #                 df_analysis_2017, output_path=f'{plot_dir}dswt_typical_event.jpg')
     
     # --- WCS cross-shelf export comparison with DSWT ---
-    plot_overall_export_comparison(ucross_ds, df_timeseries_2017, output_path=f'{plot_dir}dswt_export_contribution.jpg')
+    plot_overall_export_comparison(ucross_ds, df_dswt_2017, output_path=f'{plot_dir}dswt_export_contribution.jpg')
     
     
     # ---------------------------------------------------

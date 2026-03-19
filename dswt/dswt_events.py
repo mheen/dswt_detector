@@ -2,10 +2,11 @@ import os, sys
 parent = os.path.abspath('.')
 sys.path.insert(1, parent)
 
+from readers.read_dswt_output import read_df_from_multiple_csvs
 from tools.timeseries import get_l_time_range
 from tools.files import get_dir_from_json
 
-from scipy.signal import find_peaks, peak_widths
+from scipy.signal import find_peaks
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -25,7 +26,10 @@ class DswtEvent:
                  std_thickness:float,
                  max_h:float,
                  mean_h:float,
-                 std_h:float):
+                 std_h:float,
+                 max_transport:float,
+                 mean_transport:float,
+                 std_transport:float):
         self.start_time = start_time
         self.end_time = end_time
         self.duration = duration
@@ -39,6 +43,9 @@ class DswtEvent:
         self.max_h = max_h
         self.mean_h = mean_h
         self.std_h = std_h
+        self.max_transport = max_transport
+        self.mean_transport = mean_transport
+        self.std_transport = std_transport
       
 class DswtEvents:
     def __init__(self,
@@ -50,74 +57,69 @@ class DswtEvents:
         self.events = events
     
     @staticmethod
-    def read_from_multiple_csv_files(input_dir:str, years:list):
+    def calculate_from_df_timeseries(df_timeseries_all:pd.DataFrame, years:list[int], depth_contour=50, req_months=np.arange(1, 13, 1)):
         
         time = []
         n_events = []
         events = []
         
+        df_time_all = np.array([pd.to_datetime(t) for t in df_timeseries_all['time'].values])
+        # filter timeseries to requested months only
+        df_months = np.array([t.month for t in df_time_all])
+        l_months = np.array([m in req_months for m in df_months])
+        df_timeseries = df_timeseries_all.loc[l_months]
+        df_time = df_time_all[l_months]
+        
         for i in range(len(years)):
-            input_path = f'{input_dir}dswt_{years[i]}.csv'
-            if not os.path.exists(input_path):
-                continue
+            l_year = [t.year == years[i] for t in df_time]
             
-            df = pd.read_csv(input_path)
-            
-            df['time'] = pd.to_datetime(df['time'])
+            df_year = df_timeseries.loc[l_year]
+            df_time_year = df_time[l_year]
             
             # determine events
             yearly_events = []
             
-            df_timeseries = df.groupby(['time']).agg(
-                f_dswt=('f_dswt', 'mean'),
-                mean_vel=('vel', 'mean'),
-                max_vel=('vel', 'max'),
-                std_vel=('vel', 'std'),
-                mean_h=('h', 'mean'),
-                max_h=('h', 'max'),
-                std_h=('h', 'std'),
-                mean_thickness=('thickness', 'mean'),
-                max_thickness=('thickness', 'max'),
-                std_thickness=('thickness', 'std')
-                )
-            
-            z = df_timeseries['f_dswt'].values
-            i_peaks, properties = find_peaks(z, height=0.2, width=(1, 20)) # width specifies minimum and maximum width
+            z = df_year[f'transport_{depth_contour}m'].values / (24*60*60)
+            i_peaks, properties = find_peaks(z, height=0.05, width=(1, 20)) # width specifies minimum and maximum width
             i_left = np.floor(properties['left_ips']).astype(int)
             i_right = np.ceil(properties['right_ips']).astype(int)
             
             n = len(i_peaks)
             
             for j in range(n):
-                start_event = df_timeseries.index[i_left[j]]
-                end_event = df_timeseries.index[i_right[j]]
+                start_event = df_time_year[i_left[j]]
+                end_event = df_time_year[i_right[j]]
                 duration_event = (end_event-start_event).days
                 
-                l_time_event = get_l_time_range(df_timeseries.index, start_event, end_event)
-                mean_f = np.nanmean(df_timeseries['f_dswt'][l_time_event].values)
-                max_vel_event = np.nanmean(df_timeseries['max_vel'][l_time_event].values)
-                mean_vel_event = np.nanmean(df_timeseries['mean_vel'][l_time_event].values)
-                std_vel_event = np.nanmean(df_timeseries['std_vel'][l_time_event].values)
-                mean_thickness_event = np.nanmean(df_timeseries['mean_thickness'][l_time_event].values)
-                max_thickness_event = np.nanmean(df_timeseries['max_thickness'][l_time_event].values)
-                std_thickness_event = np.nanmean(df_timeseries['std_thickness'][l_time_event].values)
-                max_h_event = np.nanmean(df_timeseries['max_h'][l_time_event].values)
-                mean_h_event = np.nanmean(df_timeseries['mean_h'][l_time_event].values)
-                std_h_event = np.nanmean(df_timeseries['std_h'][l_time_event].values)
+                l_time_event = get_l_time_range(df_time_year, start_event, end_event)
+                mean_f = np.nanmean(df_year['f_dswt'][l_time_event].values)
+                max_vel_event = np.nanmax(df_year['vel'][l_time_event].values)
+                mean_vel_event = np.nanmean(df_year['vel'][l_time_event].values)
+                std_vel_event = np.nanstd(df_year['vel'][l_time_event].values)
+                mean_thickness_event = np.nanmean(df_year['thickness'][l_time_event].values)
+                max_thickness_event = np.nanmax(df_year['thickness'][l_time_event].values)
+                std_thickness_event = np.nanstd(df_year['thickness'][l_time_event].values)
+                max_h_event = np.nanmean(df_year['mean_h'][l_time_event].values)
+                mean_h_event = np.nanmax(df_year['mean_h'][l_time_event].values)
+                std_h_event = np.nanstd(df_year['mean_h'][l_time_event].values)
+                max_transport_event = np.nanmax(df_year[f'transport_{depth_contour}m'][l_time_event].values)
+                mean_transport_event = np.nanmean(df_year[f'transport_{depth_contour}m'][l_time_event].values)
+                std_transport_event = np.nanstd(df_year[f'transport_{depth_contour}m'][l_time_event].values)
                 
                 yearly_events.append(DswtEvent(start_event, end_event, duration_event, mean_f,
                                                max_vel_event, mean_vel_event, std_vel_event,
                                                max_thickness_event, mean_thickness_event, std_thickness_event,
-                                               max_h_event, mean_h_event, std_h_event))
+                                               max_h_event, mean_h_event, std_h_event,
+                                               max_transport_event, mean_transport_event, std_transport_event))
                 
             time.append(datetime(years[i], 7, 17))
             n_events.append(n)
             events.append(yearly_events)
         
-                
         return DswtEvents(np.array(time), np.array(n_events), events)
     
 if __name__ == '__main__':
-    input_dir = f'{get_dir_from_json("output")}'
-    years = np.arange(2017, 2018)
-    dswt_events = DswtEvents.read_from_multiple_csv_files(input_dir, years)
+    years = np.arange(2017, 2019)
+    input_dir = f'{get_dir_from_json("output")}processed/'
+    df_timeseries = read_df_from_multiple_csvs(input_dir, years, 'dswt_timeseries_')
+    dswt_events = DswtEvents.calculate_from_df_timeseries(df_timeseries, years, req_months=[5, 6, 7])
