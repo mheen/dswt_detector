@@ -147,7 +147,7 @@ def get_yearly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
         l_time = get_l_time_range(time, start_date, end_date)
         yearly_time.append(datetime(start_date.year, 7, 2)) # middle of the year
         yearly_values.append(np.nanmean(values[l_time], axis=time_axis))
-        yearly_stds.append(np.nanstd(values[l_time]), axis=time_axis)
+        yearly_stds.append(np.nanstd(values[l_time], axis=time_axis))
         
     return np.array(yearly_time), np.array(yearly_values), np.array(yearly_stds)
 
