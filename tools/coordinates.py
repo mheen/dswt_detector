@@ -61,7 +61,10 @@ def convert_lon_360_to_180(lon):
 
 def get_unique_coordinates(lon:np.ndarray, lat:np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     coords = list(zip(lon, lat))
-    unique_coords = np.array(list(set(coords)))
+    coords = np.column_stack((lon, lat))  # Shape: (n, 2)
+    unique_coords, indices = np.unique(coords, axis=0, return_index=True)
+    # Sort indices to maintain original order
+    unique_coords = unique_coords[np.argsort(indices)]
     unique_lon = unique_coords[:, 0]
     unique_lat = unique_coords[:, 1]
     return unique_lon, unique_lat
