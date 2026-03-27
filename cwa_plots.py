@@ -1,6 +1,7 @@
 from readers.read_dswt_output import get_transport_map, read_dswt_transport, read_df_from_multiple_csvs
 from readers.read_ocean_data import load_roms_data, select_roms_transect_from_known_coordinates, select_input_files, select_roms_subset
 from readers.read_meteo_data import WindTimeseries
+from readers.read_glider_data import GliderData, convert_glider_data_to_transect_data
 from dswt.dswt_events import DswtEvents
 from dswt.dswt_detection import determine_dswt_along_transect
 
@@ -13,8 +14,8 @@ from tools.files import get_dir_from_json, get_files_in_dir
 from tools.timeseries import get_monthly_means, get_monthly_climatology, get_yearly_means, get_l_months, get_l_time_range, get_time_indices, add_month_to_time, get_closest_time_index
 from tools.velocity_shore_angles import get_cross_and_along_shelf_velocities
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_yearly_grid, plot_monthly_grid, plot_boxplots_multiple_years, plot_monthly_histogram, plot_multi_bar_monthly_histogram, plot_multi_bar_yearly_histogram
-from plot_tools.general import add_subtitle, color_y_axis
-from plot_tools.basic_maps import plot_basic_map, plot_contours
+from plot_tools.general import add_subtitle, color_y_axis, get_vmin_vmax
+from plot_tools.basic_maps import plot_basic_map, plot_contours, plot_bathymetry
 from tools.coordinates import get_distance_between_points
 from tools.roms import get_z
 from tools.config import read_config
@@ -22,7 +23,9 @@ from tools.config import read_config
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.colors import ListedColormap
+from matplotlib.offsetbox import AnchoredText
 import cartopy.crs as ccrs
+import cmocean as cm
 import numpy as np
 from datetime import datetime, timedelta
 import pandas as pd
@@ -121,6 +124,140 @@ def _get_slope_estimate(grid_ds:xr.Dataset, transects_file='input/transects/cwa_
 # ---------------------------------------------------
 # Plots
 # ---------------------------------------------------
+
+# --- Introduction ---
+def plot_overview_map(glider_ds:xr.Dataset, bathy_ds:xr.Dataset, global_dswt_df:pd.DataFrame,
+                 output_path=None, show=False):
+    
+    aus_lon = [111.0, 129.0] # wa only
+    aus_lat = [-36.0, -12.0]
+    
+    depth_ticks = [-150, -100, -50, 0]
+    depth_ticklabels = [150, 100, 50, 0]
+    depth_lim = [-150, 0]
+    xlim = [glider_ds.distance.values[0]/1000, glider_ds.distance.values[-1]/1000]
+    
+    fig = plt.figure(figsize=(11, 11))
+    plt.rcParams['font.size'] = 12
+    plt.subplots_adjust(wspace=0.2)
+    # --- Global map
+    ax1 = plt.subplot(5, 3, (1, 8), projection=ccrs.Robinson())
+    ax1.set_global()
+    ax1.stock_img()
+    ax1.coastlines()
+    ax1.scatter(global_dswt_df['lon'].values, global_dswt_df['lat'].values, marker='^', s=40, c=color_pos, transform=ccrs.PlateCarree(), zorder=100)
+    ax1.plot([aus_lon[0], aus_lon[1], aus_lon[1], aus_lon[0], aus_lon[0]],
+             [aus_lat[0], aus_lat[0], aus_lat[1], aus_lat[1], aus_lat[0]],
+             '-k', linewidth=1.0, transform=ccrs.PlateCarree(), zorder=99)
+    
+    anchored_text = AnchoredText('(a) DSWT around the world', loc='upper left',
+                                 borderpad=0.0, bbox_to_anchor=(0.28, -0.04),
+                                 bbox_transform=ax1.transAxes)
+    anchored_text.zorder = 25
+    ax1.add_artist(anchored_text)
+    
+    # --- WCS map
+    ax2 = plt.subplot(5, 3, (3, 9), projection=ccrs.PlateCarree())
+    plot_basic_map(ax2, lon_range_default, lat_range_default, meridians_default, parallels_default, full_resolution=True)
+    plot_bathymetry(bathy_ds.lon.values, bathy_ds.lat.values, -bathy_ds.z.values,
+                    lon_range_default, lat_range_default, ax=ax2, show=False,
+                    vmin=0, vmax=300, cmap=cm.cm.deep)
+    xx, yy = np.meshgrid(bathy_ds.lon.values, bathy_ds.lat.values)
+    plot_contours(xx, yy, -bathy_ds.z.values,
+                  lon_range_default, lat_range_default, ax=ax2, show=False,
+                  clevels=[25, 50, 100, 200])
+    plot_contours(xx, yy, -bathy_ds.z.values,
+                  lon_range_default, lat_range_default, ax=ax2, show=False,
+                  clevels=[1000], color='#e0e0e0')
+    ax2.plot(glider_ds.lon.values, glider_ds.lat.values, '.w', linewidth=1.0, markersize=10)
+    ax2.plot(glider_ds.lon.values, glider_ds.lat.values, '.k', linewidth=0.7, label='Ocean glider transect')
+    ax2.legend(loc='lower right')
+    
+    add_subtitle(ax2, '(b) Wadjemup (Rottnest)\n      Continental Shelf')
+    
+    # --- Glider plots
+    def _plot_glider_transect(ax:plt.axes, values:np.ndarray, vmin:float, vmax:float, cmap:str, cbar_label:str,
+                              move_up=True):
+        x = glider_ds.distance.values/1000
+        c = ax.pcolormesh(x, glider_ds.z.values, np.fliplr(values), vmin=vmin, vmax=vmax, cmap=cmap)
+        ax.fill_between(x, depth_lim[0], np.flip(glider_ds.h.values), color='#d2d2d2', edgecolor='k')
+        ax.set_yticks(depth_ticks)
+        ax.set_yticklabels(depth_ticklabels)
+        ax.set_ylabel('Depth (m)')
+        ax.set_xlabel('Distance along transect (km)')
+        ax.set_xlim(xlim)
+        ax.set_ylim(depth_lim)
+        
+        if vmin is None or vmax is None:
+            min_bin = np.nanmin(values)
+            max_bin = np.nanmax(values)
+            dbin = (max_bin - min_bin) / 1000
+            vmin, vmax = get_vmin_vmax(values, min_bin=min_bin, max_bin=max_bin, dbin=dbin)
+        
+        l, b, w, h = ax.get_position().bounds
+        if move_up == True:
+            ax.set_position([l, b+0.05, w, h])
+        else:
+            ax.set_position([l, b-0.08, w, h])
+        l, b, w, h = ax.get_position().bounds
+        cax = fig.add_axes([l, b-0.08, w, 0.02])
+        cbar = plt.colorbar(c, cax=cax, orientation='horizontal')
+        cbar.set_label(cbar_label)
+        
+    ax3 = plt.subplot(5, 3, 10)
+    _plot_glider_transect(ax3, glider_ds.density.values-1000, 24.8, 25.6, cm.cm.thermal_r, '$\sigma_T$ (kg m$^{-3}$)')
+    add_subtitle(ax3, '(c) Density', location='lower right')
+    
+    ax4 = plt.subplot(5, 3, 11)
+    _plot_glider_transect(ax4, glider_ds.temp.values, 20, 22, 'RdYlBu_r', 'Temperature ($^o$C)')
+    ax4.set_yticklabels([])
+    ax4.set_ylabel('')
+    add_subtitle(ax4, '(d) Temperature', location='lower right')
+    
+    ax5 = plt.subplot(5, 3, 12)
+    _plot_glider_transect(ax5, glider_ds.salt.values, 35.7, 35.9, cm.cm.haline, 'Salinity')
+    ax5.set_yticklabels([])
+    ax5.set_ylabel('')
+    add_subtitle(ax5, '(e) Salinity', location='lower right')
+    
+    ax6 = plt.subplot(5, 3, 13)
+    _plot_glider_transect(ax6, glider_ds.ox2.values, 180, 190, cm.cm.tempo, 'Dissolved oxygen ($\mu$mol kg$^{-1}$)', move_up=False)
+    add_subtitle(ax6, '(f) Dissolved O$_2$', location='lower right')
+    
+    ax7 = plt.subplot(5, 3, 14)
+    _plot_glider_transect(ax7, glider_ds.cphl.values, 0.5, 1.2, 'summer', 'Chlorophyll\n(mg $m$^{-3}$)', move_up=False)
+    ax7.set_yticklabels([])
+    ax7.set_ylabel('')
+    add_subtitle(ax7, '(g) Chlorophyll', location='lower right')
+    
+    ax8 = plt.subplot(5, 3, 15)
+    _plot_glider_transect(ax8, glider_ds.bbp.values*10**3, 0, 13, cm.cm.turbid, 'Backscatter (10$^{-3}$ m$^{-1}$)', move_up=False)
+    ax8.set_yticklabels([])
+    ax8.set_ylabel('')
+    add_subtitle(ax8, '(h) Backscatter', location='lower right')
+    
+    # move ax1
+    l1, b1, w1, h1 = ax1.get_position().bounds
+    ax1.set_position([l1-0.05, b1, w1, h1])
+    
+    # add AUS map
+    ax_aus = fig.add_axes([l1+0.75*w1, b1-0.04, 0.3*w1, 0.35*h1], projection=ccrs.PlateCarree())
+    ax_aus.stock_img()
+    ax_aus.coastlines()
+    ax_aus.set_extent([aus_lon[0], aus_lon[1], aus_lat[0], aus_lat[1]], ccrs.PlateCarree())
+    ax_aus.plot([lon_range_default[0], lon_range_default[1], lon_range_default[1], lon_range_default[0], lon_range_default[0]],
+                [lat_range_default[0], lat_range_default[0], lat_range_default[1], lat_range_default[1], lat_range_default[0]],
+                '-w', linewidth=3)
+    ax_aus.plot([lon_range_default[0], lon_range_default[1], lon_range_default[1], lon_range_default[0], lon_range_default[0]],
+                [lat_range_default[0], lat_range_default[0], lat_range_default[1], lat_range_default[1], lat_range_default[0]],
+                '-k', linewidth=2)
+    
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
 
 # --- Results ---
 # --- General cross-shelf transport
@@ -1844,6 +1981,25 @@ if __name__ == '__main__':
     grid_file = f'{get_dir_from_json("cwa")}grid.nc'
     
     years = np.arange(2000, 2024)
+    
+    # ---------------------------------------------------
+    # Introduction
+    # ---------------------------------------------------
+    glider_data = GliderData.read_from_netcdf(f'{get_dir_from_json("glider_data")}IMOS_ANFOG_BCEOPSTUV_20160512T034541Z_SL502_FV01_timeseries_END-20160530T020243Z.nc')
+    glider_data.get_data_in_time_frame(datetime(2016, 5, 13, 8, 0), datetime(2016, 5, 15, 8, 0))
+    glider_ds = convert_glider_data_to_transect_data(glider_data)
+    bathy_ds = xr.load_dataset(get_dir_from_json("bathy")) # GA bathymetry data
+    global_dswt_df = pd.read_csv(f'{get_dir_from_json("wcs")}global_dswt_locations.csv')
+    plot_overview_map(glider_ds, bathy_ds, global_dswt_df, output_path=f'{plot_dir}overview.jpg')
+    
+    # ---------------------------------------------------
+    # Methods
+    # ---------------------------------------------------
+    # glider versus model
+    
+    
+    # transects + performance
+    
     
     # ---------------------------------------------------
     # Results
