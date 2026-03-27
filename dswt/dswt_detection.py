@@ -47,17 +47,17 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
     
     if np.any(l_time_dswt_possible) == True:
         # condition 3: vertical density gradient needs to be sufficiently large
-        drho_s = (transect_ds.drho_z.values * transect_ds.slope.values) / RHO0
-        drho_s_condition = drho_s < -2*10**-8 # drho_s_condition: [ocean_time, s_rho, distance]
+        drho_dz = (transect_ds.drho_z.values / transect_ds.delta_z.values) / RHO0
+        drho_dz_condition = drho_dz < -5*10**-5 # drho_dz_condition: [ocean_time, s_rho, distance]
         # consider only vertical density gradient at certain depth (remove any True values from surface layers)
         minimum_depth = transect_ds.h.values - config.drhodz_depth_percentage * transect_ds.h.values # note: h is positive
         l_shallow = transect_ds.z_rho.values > -minimum_depth # note: z_rho is negative, minimum depth is positive
-        drho_s_condition[:, l_shallow] = False
+        drho_dz_condition[:, l_shallow] = False
         
         # condition 4: down slope velocity needs to be positive (offshore/down-slope)
         u_down_condition = transect_ds.u_down.values > 0. # u_down_condition: [ocean_time, s_rho, distance]
         
-        l_dswt = np.logical_and(drho_s_condition, u_down_condition)
+        l_dswt = np.logical_and(drho_dz_condition, u_down_condition)
         l_dswt[~l_time_dswt_possible, :, :] = False
         
         all_transport = transect_ds.u_down.values * transect_ds.delta_z.values * transect_ds.dt.values
@@ -70,8 +70,8 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
         transport_dswt = np.zeros((len(transect_ds.ocean_time), len(transect_ds.distance)))
         depth_mean_vel_dswt = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
         thickness_dswt = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
-        min_drho_s = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
-        mean_drho_s = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
+        min_drho_z = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
+        mean_drho_z = np.empty((len(transect_ds.ocean_time), len(transect_ds.distance))) * np.nan
         f_dswt = np.zeros(len(transect_ds.distance))
         for t in t_dswt:
             x_dswt = np.where(np.any(l_dswt[t, :, :], axis=0))[0]
@@ -83,14 +83,14 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
                 transport_dswt[t, x] = np.nansum(all_transport[t, 0:z_dswt + 1, x] * u_down_condition[t, 0:z_dswt + 1, x].astype(int))
                 thickness_dswt[t, x] = np.nansum(transect_ds.delta_z.values[0:z_dswt + 1, x])
                 depth_mean_vel_dswt[t, x] = transport_dswt[t, x] / (transect_ds.dt.values * thickness_dswt[t, x])
-                min_drho_s[t, x] = np.nanmin(drho_s[t, 0:z_dswt + 1, x] * u_down_condition[t, 0:z_dswt + 1, x].astype(int))
-                mean_drho_s[t, x] = np.nanmean(drho_s[t, 0:z_dswt + 1, x] * u_down_condition[t, 0:z_dswt + 1, x].astype(int))
+                min_drho_z[t, x] = np.nanmin(transect_ds.drho_z.values[t, 0:z_dswt + 1, x] * u_down_condition[t, 0:z_dswt + 1, x].astype(int))
+                mean_drho_z[t, x] = np.nanmean(transect_ds.drho_z.values[t, 0:z_dswt + 1, x] * u_down_condition[t, 0:z_dswt + 1, x].astype(int))
                 
         daily_transport_dswt = np.nansum(transport_dswt, axis=0)
         daily_mean_thickness_dswt = np.nanmean(thickness_dswt, axis=0)
         daily_mean_vel_dswt = np.nanmean(depth_mean_vel_dswt, axis=0)
-        daily_min_drho_s = np.nanmin(min_drho_s, axis=0)
-        daily_mean_drho_s = np.nanmean(mean_drho_s, axis=0)
+        daily_min_drho_z = np.nanmin(min_drho_z, axis=0)
+        daily_mean_drho_z = np.nanmean(mean_drho_z, axis=0)
         daily_mean_drhodx = np.nanmean(mean_drhodx[t_dswt])
         daily_min_drhodx = np.nanmin(mean_drhodx[t_dswt])
         f_dswt = f_dswt / len(transect_ds.ocean_time)
@@ -101,7 +101,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
                 daily_transport_dswt[x_dswt_all], transect_ds.distance.values[x_dswt_all],
                 transect_ds.lon_rho.values[x_dswt_all], transect_ds.lat_rho.values[x_dswt_all],
                 transect_ds.h.values[x_dswt_all], daily_mean_drhodx, daily_min_drhodx,
-                daily_mean_drho_s[x_dswt_all], daily_min_drho_s[x_dswt_all])
+                daily_mean_drho_z[x_dswt_all], daily_min_drho_z[x_dswt_all])
         
     return (np.array([]), np.array([0]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]), np.array([np.nan]),
             np.array([np.nan]), np.nan, np.nan, np.array([np.nan]), np.array([np.nan]))
@@ -115,7 +115,7 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
                                      columns=['time', 'transect',
                                               'f_dswt', 'vel', 'thickness', 'transport',
                                               'distance', 'lon', 'lat', 'h',
-                                              'drhodx_mean', 'drhodx_min', 'drhos_mean', 'drhos_min'])
+                                              'drhodx_mean', 'drhodx_min', 'drho_z_mean', 'drho_z_min'])
     time = pd.to_datetime(roms_ds.ocean_time.values[0]).date()
     row = 0
     for i, transect_name in enumerate(transect_names):
@@ -123,13 +123,13 @@ def determine_daily_dswt_along_multiple_transects(roms_ds:xr.Dataset, transects:
         xi = transects[transect_name]['xi']
         
         transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
-        (t_dswt, f_dswt, vel, thickness, transport, distance, lon, lat, h, drhodx_mean, drhodx_min, drhos_mean, drhos_min) = determine_dswt_along_transect(transect_ds, config)
+        (t_dswt, f_dswt, vel, thickness, transport, distance, lon, lat, h, drhodx_mean, drhodx_min, drho_z_mean, drho_z_min) = determine_dswt_along_transect(transect_ds, config)
         
         for j in range(len(transport)):
             df_transects_dswt.loc[row] = [time, transect_name, f_dswt[j],
                                         vel[j], thickness[j], transport[j],
                                         distance[j], lon[j], lat[j], h[j],
-                                        drhodx_mean, drhodx_min, drhos_mean[j], drhos_min[j]]
+                                        drhodx_mean, drhodx_min, drho_z_mean[j], drho_z_min[j]]
             row += 1
         
     return df_transects_dswt
