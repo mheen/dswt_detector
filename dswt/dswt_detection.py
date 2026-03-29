@@ -48,7 +48,7 @@ def determine_dswt_along_transect(transect_ds:xr.Dataset, config:Config, mld_con
     if np.any(l_time_dswt_possible) == True:
         # condition 3: vertical density gradient needs to be sufficiently large
         drho_dz = (transect_ds.drho_z.values / transect_ds.delta_z.values) / RHO0
-        drho_dz_condition = drho_dz < -5*10**-5 # drho_dz_condition: [ocean_time, s_rho, distance]
+        drho_dz_condition = drho_dz < -4*10**-5 # drho_dz_condition: [ocean_time, s_rho, distance]
         # consider only vertical density gradient at certain depth (remove any True values from surface layers)
         minimum_depth = transect_ds.h.values - config.drhodz_depth_percentage * transect_ds.h.values # note: h is positive
         l_shallow = transect_ds.z_rho.values > -minimum_depth # note: z_rho is negative, minimum depth is positive

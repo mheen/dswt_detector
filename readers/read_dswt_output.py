@@ -77,7 +77,8 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
     min_h = np.array([])
     mean_h = np.array([])
     max_h = np.array([])
-    drhos = np.array([])
+    drho_z = np.array([])
+    min_drho_z = np.array([])
     
     for year in years:
         input_path = f'{input_dir}dswt_{year}.csv'
@@ -96,7 +97,8 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
             min_h = np.concatenate((min_h, np.empty(len(time_year))*np.nan))
             mean_h = np.concatenate((mean_h, np.empty(len(time_year))*np.nan))
             max_h = np.concatenate((max_h, np.empty(len(time_year))*np.nan))
-            drhos = np.concatenate((drhos, np.empty(len(time_year))*np.nan))
+            drho_z = np.concatenate((drho_z, np.empty(len(time_year))*np.nan))
+            min_drho_z = np.concatenate((min_drho_z, np.empty(len(time_year))*np.nan))
             continue
         
         df = pd.read_csv(input_path)
@@ -116,7 +118,8 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
         min_h_year = np.empty(len(time_year)) * np.nan
         mean_h_year = np.empty(len(time_year)) * np.nan
         max_h_year = np.empty(len(time_year)) * np.nan
-        drhos_year = np.empty(len(time_year)) * np.nan
+        drho_z_year = np.empty(len(time_year)) * np.nan
+        min_drho_z_year = np.empty(len(time_year)) * np.nan
         for t in range(len(time_org)):
             i_time = np.where(time_org[t] == time_year)[0][0]
             f_dswt_year[i_time] = df_daily_mean['f_dswt'].values[t]
@@ -129,7 +132,8 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
             min_h_year[i_time] = df_daily_min['h'].values[t]
             mean_h_year[i_time] = df_daily_mean['h'].values[t]
             max_h_year[i_time] = df_daily_max['h'].values[t]
-            drhos_year[i_time] = df_daily_mean['drhos_mean'].values[t]
+            drho_z_year[i_time] = df_daily_mean['drho_z_mean'].values[t]
+            min_drho_z_year[i_time] = df_daily_min['drho_z_min'].values[t]
         
         time = np.concatenate((time, time_year))
         f_dswt = np.concatenate((f_dswt, f_dswt_year))
@@ -142,10 +146,11 @@ def get_dswt_daily_timeseries_df(input_dir:str, years:list) -> tuple[np.ndarray[
         min_h = np.concatenate((min_h, min_h_year))
         mean_h = np.concatenate((mean_h, mean_h_year))
         max_h = np.concatenate((max_h, max_h_year))
-        drhos = np.concatenate((drhos, drhos_year))
+        drho_z = np.concatenate((drho_z, drho_z_year))
+        min_drho_z = np.concatenate((min_drho_z, min_drho_z_year))
     
-    data = np.array([time, f_dswt, vel, thickness, transport, drhodx, min_distance, max_distance, min_h, mean_h, max_h, drhos])
-    columns = ['time', 'f_dswt', 'vel', 'thickness', 'transport', 'drhodx', 'min_distance', 'max_distance', 'min_h', 'mean_h', 'max_h', 'drhos']
+    data = np.array([time, f_dswt, vel, thickness, transport, drhodx, min_distance, max_distance, min_h, mean_h, max_h, drho_z, min_drho_z])
+    columns = ['time', 'f_dswt', 'vel', 'thickness', 'transport', 'drhodx', 'min_distance', 'max_distance', 'min_h', 'mean_h', 'max_h', 'drho_z_mean', 'drho_z_min']
     
     df_timeseries = pd.DataFrame(data=data.transpose(), columns=columns)
     
