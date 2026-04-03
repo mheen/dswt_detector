@@ -71,9 +71,10 @@ def determine_dswt_along_glider_transect(transect_ds:xr.Dataset, config:Config):
             np.array([np.nan]), np.array([np.nan]))
 
 def plot_glider_model_dswt(glider_ds:xr.Dataset, model_ds:xr.Dataset, config:Config,
-                           output_path=None, show=False):
+                           output_path=None, show=False,
+                           vmin1=None, vmax1=None, vmin2=None, vmax2=None, vmin3=None, vmax3=None):
 
-    time_str = f'{pd.to_datetime(glider_ds.time.values[0]).strftime("%d-%m-%Y %H:%M")}\n{pd.to_datetime(glider_ds.time.values[-1]).strftime("%d-%m-%Y %H:%M")}'
+    time_str = f'{pd.to_datetime(glider_ds.time.values[0]).strftime("%d-%m-%Y %H:%M")} - {pd.to_datetime(glider_ds.time.values[-1]).strftime("%d-%m-%Y %H:%M")}'
 
     # --- Glider transect
     (glider_dswt_x, _, _, glider_dswt_h, glider_dswt_dz, _, _, _) = determine_dswt_along_glider_transect(glider_ds, config)
@@ -104,7 +105,8 @@ def plot_glider_model_dswt(glider_ds:xr.Dataset, model_ds:xr.Dataset, config:Con
         return c
     
     # density
-    vmin1, vmax1 = get_vmin_vmax(density-1000, min_bin=24, max_bin=27, dbin=0.05)
+    if np.logical_or(vmin1==None, vmax1==None):
+        vmin1, vmax1 = get_vmin_vmax(density-1000, min_bin=24, max_bin=27, dbin=0.05)
     ax1 = plt.subplot(2, 3, 1)
     c1 = _plot_glider_transect(ax1, density-1000, vmin1, vmax1, cm.cm.thermal_r)
     ax1.scatter(glider_dswt_x, -glider_dswt_h + glider_dswt_dz, marker='o', c='w', s=40)
@@ -112,16 +114,17 @@ def plot_glider_model_dswt(glider_ds:xr.Dataset, model_ds:xr.Dataset, config:Con
     add_subtitle(ax1, f'(a) Ocean glider', location='lower left')
     
     # temperature
-    vmin2, vmax2 = get_vmin_vmax(temp, min_bin=np.nanmin(temp), max_bin=np.nanmax(temp))
+    if np.logical_or(vmin2==None, vmax2==None):
+        vmin2, vmax2 = get_vmin_vmax(temp, min_bin=np.nanmin(temp), max_bin=np.nanmax(temp))
     ax2 = plt.subplot(2, 3, 2)
     c2 = _plot_glider_transect(ax2, temp, vmin2, vmax2, 'RdYlBu_r')
     ax2.set_yticklabels([])
     ax2.set_ylabel('')
     add_subtitle(ax2, f'(b) Ocean glider', location='lower left')
-    ax2.set_title(time_str)
     
     # salinity
-    vmin3, vmax3 = get_vmin_vmax(salt, min_bin=np.nanmin(salt), max_bin=np.nanmax(salt), dbin=0.02)
+    if np.logical_or(vmin3==None, vmax3==None):
+        vmin3, vmax3 = get_vmin_vmax(salt, min_bin=np.nanmin(salt), max_bin=np.nanmax(salt), dbin=0.02)
     ax3 = plt.subplot(2, 3, 3)
     c3 = _plot_glider_transect(ax3, salt, vmin3, vmax3, cm.cm.haline)
     ax3.set_yticklabels([])
@@ -202,6 +205,9 @@ def plot_glider_model_dswt(glider_ds:xr.Dataset, model_ds:xr.Dataset, config:Con
     axm2.set_xticks([])
     axm2.set_yticks([])
     
+    # title
+    plt.suptitle(time_str, x=0.5, y=0.92, ha='center')
+    
     if output_path is not None:
         # plt.savefig(output_path, bbox_extra_artists=(qkey,), bbox_inches='tight', dpi=300)
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -216,40 +222,46 @@ if __name__ == '__main__':
     input_files = [# may 2010
                    "IMOS_ANFOG_BCEOPSTUV_20100507T030402Z_SL130_FV01_timeseries_END-20100515T133815Z.nc",
                    # july 2010
-                   "IMOS_ANFOG_BCEOPSTUV_20100628T045246Z_SL130_FV01_timeseries_END-20100714T233721Z.nc",
-                   # sep 2012
-                   "IMOS_ANFOG_BCEOPSTUV_20120824T031255Z_SL248_FV01_timeseries_END-20120914T035136Z.nc",
-                   # may 2016
-                   "IMOS_ANFOG_BCEOPSTUV_20160512T034541Z_SL502_FV01_timeseries_END-20160530T020243Z.nc",
-                   # jul 2019
-                   "IMOS_ANFOG_BCEOPSTUV_20190625T071857Z_SL248_FV01_timeseries_END-20190723T040704Z.nc",
-                   # jul 2020
-                   "IMOS_ANFOG_BCEOPSTUV_20200625T074407Z_SL248_FV01_timeseries_END-20200721T053759Z.nc",
-                   # jul 2022
-                   "IMOS_ANFOG_BCEOPSTUV_20220628T064224Z_SL286_FV01_timeseries_END-20220712T082641Z.nc"]
+                   "IMOS_ANFOG_BCEOPSTUV_20100628T045246Z_SL130_FV01_timeseries_END-20100714T233721Z.nc"]
+                #    # sep 2012
+                #    "IMOS_ANFOG_BCEOPSTUV_20120824T031255Z_SL248_FV01_timeseries_END-20120914T035136Z.nc",
+                #    # may 2016
+                #    "IMOS_ANFOG_BCEOPSTUV_20160512T034541Z_SL502_FV01_timeseries_END-20160530T020243Z.nc",
+                #    # jul 2019
+                #    "IMOS_ANFOG_BCEOPSTUV_20190625T071857Z_SL248_FV01_timeseries_END-20190723T040704Z.nc",
+                #    # jul 2020
+                #    "IMOS_ANFOG_BCEOPSTUV_20200625T074407Z_SL248_FV01_timeseries_END-20200721T053759Z.nc",
+                #    # jul 2022
+                #    "IMOS_ANFOG_BCEOPSTUV_20220628T064224Z_SL286_FV01_timeseries_END-20220712T082641Z.nc"]
     
     start_dates = [datetime(2010, 5, 12, 10, 0),
-                   datetime(2010, 7, 5, 14, 0),
-                   datetime(2012, 9, 10, 0, 0),
-                   datetime(2016, 5, 13, 8, 0),
-                   datetime(2019, 7, 3, 6, 0),
-                   datetime(2020, 7, 5),
-                   datetime(2022, 7, 5, 0, 0)]
+                   datetime(2010, 7, 5, 14, 0)]
+                #    datetime(2012, 9, 10, 0, 0),
+                #    datetime(2016, 5, 13, 8, 0),
+                #    datetime(2019, 7, 3, 6, 0),
+                #    datetime(2020, 7, 5),
+                #    datetime(2022, 7, 5, 0, 0)]
     end_dates = [datetime(2010, 5, 14, 0, 0),
-                 datetime(2010, 7, 8, 0, 0),
-                 datetime(2012, 9, 11, 22, 0),
-                 datetime(2016, 5, 15, 0, 0),
-                 datetime(2019, 7, 6, 0, 0),
-                 datetime(2020, 7, 6, 10, 0),
-                 datetime(2022, 7, 6, 5, 0)]
-    flip = [True, False, True, False, False, False, False, False]
+                 datetime(2010, 7, 8, 0, 0)]
+                #  datetime(2012, 9, 11, 22, 0),
+                #  datetime(2016, 5, 15, 0, 0),
+                #  datetime(2019, 7, 6, 0, 0),
+                #  datetime(2020, 7, 6, 10, 0),
+                #  datetime(2022, 7, 6, 5, 0)]
+    flip = [True, False]#, True, False, False, False, False, False]
+    vmin1 = [24.8, 24.8]
+    vmax1 = [25.6, 25.6]
+    vmin2 = [20.0, 19.0]
+    vmax2 = [22.0, 21.0]
+    vmin3 = [35.4, 35.4]
+    vmax3 = [35.7, 35.6]
     
     config = read_config('cwa')
     
     model_dir = get_dir_from_json("cwa")
     model_grid_file = f'{model_dir}grid.nc'
     
-    output_dir = f'{get_dir_from_json("plots")}cwa/validation/'
+    output_dir = f'{get_dir_from_json("plots")}cwa/'
     create_dir_if_does_not_exist(output_dir)
     
     for i, input_file in enumerate(input_files):
@@ -269,6 +281,7 @@ if __name__ == '__main__':
         l_time = get_l_time_range(model_time, start_dates[i], end_dates[i])
         model_ds = model_ds.isel(ocean_time=np.where(l_time)[0])
         
-        output_path = f'{output_dir}{pd.to_datetime(start_dates[i]).strftime("%Y%m%d")}.jpg'
-        plot_glider_model_dswt(glider_ds, model_ds, config, output_path=output_path)
+        output_path = f'{output_dir}glider_{pd.to_datetime(start_dates[i]).strftime("%Y%m%d")}.jpg'
+        plot_glider_model_dswt(glider_ds, model_ds, config, output_path=output_path,
+                               vmin1=vmin1[i], vmax1=vmax1[i], vmin2=vmin2[i], vmax2=vmax2[i], vmin3=vmin3[i], vmax3=vmax3[i])
         

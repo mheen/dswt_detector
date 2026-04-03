@@ -38,8 +38,6 @@ def convert_sustr_svstr_to_rho_east_north(roms_ds:xr.Dataset):
     roms_ds['svstr_northward'] = (['ocean_time', 'eta_rho', 'xi_rho'], svstr_northward)
     return roms_ds
 
-
-
 def calculate_surface_ekman_layer(ds_stress_contour:xr.Dataset):
     tau_s = np.sqrt(ds_stress_contour.sustr_eastward.values**2 + ds_stress_contour.svstr_northward.values**2)
     
@@ -65,6 +63,9 @@ def calculate_surface_bottom_ekman_transport(ds_stress_contour:xr.Dataset, ds_ro
     return Tes, Teb
 
 def estimate_us_ub(ds_roms_contour:xr.Dataset, contour_length:float):
+    '''Estimates cross-shelf transport in the surface and bottom layers
+    along a contour based on when surface and bottom velocities
+    change sign.'''
     n_z_layers = len(ds_roms_contour.s_rho)
     
     Uss = np.zeros(len(ds_roms_contour.distance))
@@ -190,31 +191,6 @@ def calculate_gradient_richardson_number(ds_roms_contour:xr.Dataset):
     ri = (G * abs(drho_dz)) / (RHO0 * (du_dz**2 + dv_dz**2))
     
     return ri
-
-def calculate_surface_and_bottom_boundaries_using_richardson(ds_roms_contour:xr.Dataset):
-    ri = calculate_gradient_richardson_number(ds_roms_contour)
-    
-    l_ri = ri > RI_CRIT
-    
-    # depth index for which Ri condition is met from the bottom
-    # (argmax finds first instance when True (1) is returned)
-    i_bottom = l_ri.argmax(axis=1)
-    # depth index for which Ri condition is met from the surface
-    # (argmax of flipped depth finds first instance from last index when True (1) is returned)
-    # convert this back to non-flipped index using depth shape (len - index - 1)
-    i_surface = len(ds_roms_contour.s_rho) - l_ri[::-1, :].argmax(axis=1) - 1
-    
-    # bottom boundary layer depth
-    ri_bd = np.empty(len(ds_roms_contour.distance)) * np.nan
-    i_distance = np.where(i_bottom != 0)
-    ri_bd[i_distance] = ds_roms_contour.h.values[i_distance] + ds_roms_contour.z_rho.values[i_bottom[i_distance], i_distance]
-    
-    # surface boundary layer depth
-    ri_sd = np.empty(len(ds_roms_contour.distance)) * np.nan
-    i_distance = np.where(i_surface != len(ds_roms_contour.s_rho) - 1)
-    ri_sd[i_distance] = ds_roms_contour.z_rho.values[i_surface[i_distance], i_distance]
-    
-    return np.nanmean(ri_sd), np.nanmean(ri_bd), np.nanmin(ri)
     
 def calculate_bulk_richardson_number(ds_roms_contour:xr.Dataset):
     # delta values are surface - bottom
@@ -415,26 +391,8 @@ def write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_in
                 df.to_csv(output_path, mode='a', header=False, index=False)
             else:
                 df.to_csv(output_path, index=False)
-    
-def read_analyses_from_multiple_csvs(input_dir:str, years:list) -> pd.DataFrame:
-    df = None
-    
-    for year in years:
-        input_path = f'{input_dir}analysis_{year}.csv'
-        if not os.path.exists(input_path):
-            continue
-        
-        df_y = pd.read_csv(input_path)
-        
-        if df is None:
-            df = df_y
-            continue
-        
-        df = pd.concat([df, df_y], ignore_index=True)
-        
-    return df
 
-def write_cross_shelf_transport_analysis(model, year, model_input_dir, grid_file, output_path,
+def write_cross_shelf_transport_to_netcdf(model, year, model_input_dir, grid_file, output_path,
                                          lon_range, lat_range):
     file_preface = f'{model}_'
     
@@ -549,8 +507,6 @@ if __name__ == '__main__':
     model_input_dir = get_dir_from_json(model)
     grid_file = f'{model_input_dir}grid.nc'
     
-    dswt_input_dir = f'{get_dir_from_json("output")}processed/'
-    
     output_dir = get_dir_from_json('analysis')
     create_dir_if_does_not_exist(output_dir)
     
@@ -565,8 +521,8 @@ if __name__ == '__main__':
     depth_range_shallow = [0, 20]
     depth_range_deep = [50, 300] # LC
     
-    write_cross_shelf_transport_analysis(model, 2017, model_input_dir, grid_file, f'{output_dir}/cross-shelf/ucross_2017.nc',
-                                         lon_range, lat_range)
+    write_cross_shelf_transport_to_netcdf(model, 2017, model_input_dir, grid_file, f'{output_dir}/cross-shelf/ucross_2017.nc',
+                                     lon_range, lat_range)
     
-    write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_input_dir, dswt_input_dir, output_dir,
+    write_analysis_data_to_csv(model, years, model_input_dir, grid_file, wind_input_dir, output_dir,
                                lon_range, lat_range, depth_contour, depth_range_shallow, depth_range_deep)

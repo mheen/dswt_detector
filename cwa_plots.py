@@ -5,13 +5,15 @@ from readers.read_glider_data import GliderData, convert_glider_data_to_transect
 from dswt.dswt_events import DswtEvents
 from dswt.dswt_detection import determine_dswt_along_transect
 
-from cwa_analyses import read_analyses_from_multiple_csvs, get_roms_contour_coordinates, get_roms_ds_along_contour
+from cwa_analyses import get_roms_contour_coordinates, get_roms_ds_along_contour
 
-from transects import read_transects_in_lon_lat_range_from_json
+from transects import read_transects_in_lon_lat_range_from_json, get_depth_contours
+
+from guis.transect_removal import convert_land_mask_to_polygons, map_with_land_and_contours
 
 from tools import log
 from tools.files import get_dir_from_json, get_files_in_dir
-from tools.timeseries import get_monthly_means, get_monthly_climatology, get_yearly_means, get_l_months, get_l_time_range, get_time_indices, add_month_to_time, get_closest_time_index
+from tools.timeseries import get_monthly_means, get_monthly_climatology, get_yearly_means, get_l_months, get_l_time_range, get_time_indices, add_month_to_time, get_closest_time_index, get_monthly_sums
 from tools.velocity_shore_angles import get_cross_and_along_shelf_velocities
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_yearly_grid, plot_monthly_grid, plot_boxplots_multiple_years, plot_monthly_histogram, plot_multi_bar_monthly_histogram, plot_multi_bar_yearly_histogram
 from plot_tools.general import add_subtitle, color_y_axis, get_vmin_vmax
@@ -24,6 +26,9 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.colors import ListedColormap
 from matplotlib.offsetbox import AnchoredText
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+import matplotlib.patheffects as pe
 import cartopy.crs as ccrs
 import cmocean as cm
 import numpy as np
@@ -121,6 +126,54 @@ def _get_slope_estimate(grid_ds:xr.Dataset, transects_file='input/transects/cwa_
         slope.append((h[i] - h[0]) / distance)
     return np.nanmean(slope)
 
+def _get_monthly_performance_data(df:pd.DataFrame):
+    time = np.array([datetime.strptime(str(d), '%Y%m%d%H%M') for d in df['time'].values])
+    i_sort = np.argsort(time)
+    time = time[i_sort]
+    time_m, counts_m = get_monthly_sums(time, np.ones(len(time)))
+    
+    manual_dswt = df['manual_dswt'].values[i_sort]
+    algorithm_dswt = df['algorithm_dswt'].values[i_sort]
+    transport = df['transport'].values[i_sort]
+    
+    l_correct = manual_dswt == algorithm_dswt
+    transport_correct = np.copy(transport)
+    transport_correct[~l_correct] = 0.0
+    
+    l_incorrect1 = np.logical_and(manual_dswt == 1, algorithm_dswt == 0)
+    l_incorrect2 = np.logical_and(manual_dswt == 0, algorithm_dswt == 1)
+    l_incorrect = np.logical_or(l_incorrect1, l_incorrect2)
+    transport_incorrect = np.copy(transport)
+    transport_incorrect[~l_incorrect] = 0.0
+    
+    l_uncertain = manual_dswt == 0.5
+    transport_uncertain = np.copy(transport)
+    transport_uncertain[~l_uncertain] = 0.0
+    
+    _, transport_correct_m = get_monthly_sums(time, transport_correct)
+    _, transport_incorrect_m = get_monthly_sums(time, transport_incorrect)
+    _, transport_uncertain_m = get_monthly_sums(time, transport_uncertain)
+    
+    return time_m, counts_m, transport_correct_m, transport_incorrect_m, transport_uncertain_m
+
+def read_analyses_from_multiple_csvs(input_dir:str, years:list) -> pd.DataFrame:
+    df = None
+    
+    for year in years:
+        input_path = f'{input_dir}analysis_{year}.csv'
+        if not os.path.exists(input_path):
+            continue
+        
+        df_y = pd.read_csv(input_path)
+        
+        if df is None:
+            df = df_y
+            continue
+        
+        df = pd.concat([df, df_y], ignore_index=True)
+        
+    return df
+
 # ---------------------------------------------------
 # Plots
 # ---------------------------------------------------
@@ -150,8 +203,8 @@ def plot_overview_map(glider_ds:xr.Dataset, bathy_ds:xr.Dataset, global_dswt_df:
              [aus_lat[0], aus_lat[0], aus_lat[1], aus_lat[1], aus_lat[0]],
              '-k', linewidth=1.0, transform=ccrs.PlateCarree(), zorder=99)
     
-    anchored_text = AnchoredText('(a) DSWT around the world', loc='upper left',
-                                 borderpad=0.0, bbox_to_anchor=(0.28, -0.04),
+    anchored_text = AnchoredText('(a) DSWT around the world', loc='lower left',
+                                 borderpad=0.0, bbox_to_anchor=(0.28, 1.03),
                                  bbox_transform=ax1.transAxes)
     anchored_text.zorder = 25
     ax1.add_artist(anchored_text)
@@ -225,13 +278,13 @@ def plot_overview_map(glider_ds:xr.Dataset, bathy_ds:xr.Dataset, global_dswt_df:
     add_subtitle(ax6, '(f) Dissolved O$_2$', location='lower right')
     
     ax7 = plt.subplot(5, 3, 14)
-    _plot_glider_transect(ax7, glider_ds.cphl.values, 0.5, 1.2, 'summer', 'Chlorophyll\n(mg $m$^{-3}$)', move_up=False)
+    _plot_glider_transect(ax7, glider_ds.cphl.values, 0.5, 1.2, 'summer', 'Chlorophyll\n(mg m$^{-3}$)', move_up=False)
     ax7.set_yticklabels([])
     ax7.set_ylabel('')
     add_subtitle(ax7, '(g) Chlorophyll', location='lower right')
     
     ax8 = plt.subplot(5, 3, 15)
-    _plot_glider_transect(ax8, glider_ds.bbp.values*10**3, 0, 13, cm.cm.turbid, 'Backscatter (10$^{-3}$ m$^{-1}$)', move_up=False)
+    _plot_glider_transect(ax8, glider_ds.bbp.values*10**3, 0, 10, cm.cm.turbid, 'Backscatter (10$^{-3}$ m$^{-1}$)', move_up=False)
     ax8.set_yticklabels([])
     ax8.set_ylabel('')
     add_subtitle(ax8, '(h) Backscatter', location='lower right')
@@ -251,6 +304,158 @@ def plot_overview_map(glider_ds:xr.Dataset, bathy_ds:xr.Dataset, global_dswt_df:
     ax_aus.plot([lon_range_default[0], lon_range_default[1], lon_range_default[1], lon_range_default[0], lon_range_default[0]],
                 [lat_range_default[0], lat_range_default[0], lat_range_default[1], lat_range_default[1], lat_range_default[0]],
                 '-k', linewidth=2)
+    
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
+
+# --- Methods ---
+def plot_transects_and_performance(grid_ds:xr.Dataset, output_path=None, show=False):
+    # transects
+    lon_range = [114.0, 116.0]
+    lat_range = [-33.0, -31.0]
+    transects_file = 'input/transects/cwa_transects.json'
+    transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
+    transect_names = list(transects.keys())
+    config = read_config('cwa')
+    land_polygons = convert_land_mask_to_polygons(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.mask_rho.values)
+    contours = get_depth_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values, config.transect_contours)
+    
+    # performance
+    performance_file = f'performance_tests/output/cwa/cwa_2017_performance_comparison.csv'
+    df = pd.read_csv(performance_file)
+    manual_dswt = df['manual_dswt'].values
+    algorithm_dswt = df['algorithm_dswt'].values
+    
+    l_no_dswt = manual_dswt == 0
+    l_dswt = manual_dswt == 1
+    l_uncertain = manual_dswt == 0.5
+    
+    l_correct_no_dswt = algorithm_dswt[l_no_dswt] == 0
+    n_correct_no_dswt = np.sum(l_correct_no_dswt)
+    n_incorrect_no_dswt = np.sum(l_no_dswt) - n_correct_no_dswt
+    transport_incorrect_no_dswt = df['transport'].values[l_no_dswt][~l_correct_no_dswt]
+    
+    l_correct_dswt = algorithm_dswt[l_dswt] == 1
+    n_correct_dswt = np.sum(l_correct_dswt)
+    n_incorrect_dswt = np.sum(l_dswt) - n_correct_dswt
+    transport_correct_dswt = df['transport'].values[l_dswt][l_correct_dswt]
+    
+    l_uncertain_no_dswt = algorithm_dswt[l_uncertain] == 0
+    l_uncertain_dswt = algorithm_dswt[l_uncertain] == 1
+    transport_uncertain = df['transport'].values[l_uncertain]
+    transport_uncertain = transport_uncertain[~np.isnan(transport_uncertain)]
+    
+    time_m, counts_m, transport_correct_m, transport_incorrect_m, transport_uncertain_m = _get_monthly_performance_data(df)
+    
+    # --- figure
+    fig = plt.figure(figsize=(11, 8))
+    plt.subplots_adjust(wspace=0.3, hspace=0.2)
+    
+    # transects plot
+    ax1 = plt.subplot(2, 3, (1, 4), projection=ccrs.PlateCarree())
+    map_with_land_and_contours(ax1, contours, land_polygons, lon_range_default, lat_range_default, meridians_default, parallels_default)
+    for i in range(len(transect_names)):
+        lon_org = transects[transect_names[i]]['lon_org']
+        lat_org = transects[transect_names[i]]['lat_org']
+        ax1.plot(lon_org, lat_org, '-', color='#C70039', linewidth=0.7)
+    legend_elements = [Line2D([0], [0], color='#C70039', lw=1, label='Transects'),
+                       Line2D([0], [0], color='k', lw=1, label='Bathymetry contours'),
+                       Patch(facecolor='#d2d2d2', edgecolor='k', label='ROMS landmask')]
+    ax1.legend(handles=legend_elements, loc='lower left')
+    add_subtitle(ax1, '(a) CWA transects')
+    
+    # number of detections
+    ax2 = plt.subplot(2, 3, 2)
+    ax2.bar([1], [n_correct_no_dswt], color='#900C3F', label='Algorithm: no DSWT')
+    ax2.bar([1], [n_incorrect_no_dswt], bottom=[n_correct_no_dswt], color='#25419e', label='Algorithm: DSWT')
+    ax2.bar([2], [n_correct_dswt], color='#25419e')
+    ax2.bar([2], [n_incorrect_dswt], bottom=[n_correct_dswt], color='#900C3F')
+    ax2.bar([3], [np.sum(l_uncertain_dswt)], color='#25419e')
+    ax2.bar([3], [np.sum(l_uncertain_no_dswt)], bottom=[np.sum(l_uncertain_dswt)], color='#900C3F')
+    
+    ax2.set_xticks([1, 2, 3])
+    ax2.set_xticklabels(['No DSWT', 'DSWT', 'Possible'])
+    ax2.set_xlabel('Manual determination')
+    
+    ylim2 = np.ceil(max([np.sum(l_no_dswt), np.sum(l_dswt), np.sum(l_uncertain)])) * 1.2
+    ax2.set_ylim([0, ylim2])
+    ax2.set_ylabel('Tests (#)')
+    
+    # ax22 = ax2.twinx()
+    # ax22.set_ylim([0, ylim2/len(manual_dswt) * 100])
+    # yticks = ax2.get_yticks()
+    # ax22.set_yticks(yticks/len(manual_dswt) * 100)
+    # ax22.set_ylabel('Tests (%)')
+    
+    ax2.legend(loc='upper right', bbox_to_anchor=(1.0, 0.94))
+    
+    add_subtitle(ax2, '(b) Performance test outcomes')
+    
+    # effect on transport
+    y_scale = 10**4
+    mean_transport = np.array([np.nanmean(transport_incorrect_no_dswt) / y_scale, np.nanmean(transport_correct_dswt) / y_scale, np.nanmean(transport_uncertain) / y_scale])
+    std_transport = np.array([np.nanstd(transport_incorrect_no_dswt) / y_scale, np.nanstd(transport_correct_dswt) / y_scale, np.nanstd(transport_uncertain) / y_scale])
+    ax3 = plt.subplot(2, 3, 3)
+    ax3.bar([0, 1, 2], mean_transport,
+            yerr=std_transport,
+            color=color_transport, ecolor=color_transport_std)
+    ax3.set_xticks([0, 1, 2])
+    ax3.set_xticklabels(['No DSWT', 'DSWT', 'Possible'])
+    ax3.set_xlabel('Manual determination')
+    ax3.set_ylabel('Transport (10$^4$ m$^2$ s$^{-1}$)')
+    ylim3 = np.ceil(max(mean_transport) + max(std_transport)) * 1.2
+    ax3.set_ylim([0, ylim3])
+    add_subtitle(ax3, '(d) Effect on transport')
+    
+    # monthly tests
+    str_time = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+    ax4 = plt.subplot(2, 3, 5)
+    plot_monthly_histogram(time_m, counts_m,
+                           ylabel='Tests (#)',
+                           time_is_center=True, color='#25419e',
+                           ax=ax4, show=False)
+    ax4.set_xticklabels(str_time)
+    ylim4 = np.ceil(1.3*max(counts_m))
+    ax4.set_ylim([0, ylim4])
+    ax4.set_xlim([datetime(2017, 1, 1), datetime(2017, 12, 31)])
+    add_subtitle(ax4, '(c) Number of tests per month')
+    
+    # monthly effect on transport
+    center_time = time_m
+    time_plus = np.append(time_m, add_month_to_time(time_m[-1], 1))
+    width = 0.8*np.array([dt.days for dt in np.diff(time_plus)])
+    
+    ax5 = plt.subplot(2, 3, 6)
+    bottom = np.zeros(len(time_m))
+    ax5.bar(time_m, transport_correct_m / y_scale, width, label='DSWT', bottom=bottom, color='#25419e')
+    bottom += transport_correct_m / y_scale
+    ax5.bar(time_m, transport_incorrect_m / y_scale, width, label='No DSWT', bottom=bottom, color='#900C3F')
+    bottom += transport_incorrect_m / y_scale
+    ax5.bar(time_m, transport_uncertain_m / y_scale, width, label='Possible', bottom=bottom, color='#929292')
+    
+    ax5.set_xticks(center_time)
+    ax5.set_xticklabels(str_time)
+    ax5.set_ylabel('Monthly transport (10$^4$ m$^2$ s$^{-1}$)')
+    
+    ylim5 = np.ceil(max(transport_correct_m + transport_incorrect_m + transport_uncertain_m) / y_scale / 50) * 50
+    ax5.set_ylim([0, ylim5])
+    ax5.set_xlim([datetime(2017, 1, 1), datetime(2017, 12, 31)])
+    
+    ax5.legend(loc='upper right', bbox_to_anchor=(1.0, 0.94))
+    
+    add_subtitle(ax5, '(e) Monthly effect on transport')
+    
+    # move transects plot
+    l1, b1, w1, h1 = ax1.get_position().bounds
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    l5, b5, w5, h5 = ax5.get_position().bounds
+    h11 = b2 + h2 - b5
+    w11 = w1/h1 * h11
+    ax1.set_position([l1-0.2, b5, w11, h11])
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -682,6 +887,64 @@ def plot_us_ub_dynamics(df_analysis:pd.DataFrame, output_path=None, show=False):
     else:
         plt.close()
 
+def plot_us_ue_comparison(df_analysis:pd.DataFrame, output_path=None, show=False):    
+    
+    time = np.array([pd.to_datetime(d) for d in df_analysis['time'].values])
+    l_summer = np.logical_or(get_l_time_range(time, datetime(2017, 12, 1), datetime(2017, 12, 31)),
+                             get_l_time_range(time, datetime(2017, 1, 1), datetime(2017, 1, 31)))
+    l_winter = get_l_time_range(time, datetime(2017, 5, 1), datetime(2017, 7, 31))
+    
+    df_summer = df_analysis.loc[l_summer]
+    df_winter = df_analysis.loc[l_winter]
+    
+    color_summer = "#D19E3132"
+    color_winter = "#483f9932"
+    
+    xlim = [0, 15]
+    ylim = [-10, 20]
+    
+    def _plot_northerly_southerly(ax, df):
+        l_southerly, l_northerly, _, _ = _split_into_wind_dirs(df)
+        df_southerly = df.loc[l_southerly]
+        df_northerly = df.loc[l_northerly]
+        
+        x_southerly = df_southerly['wind_vel'].values
+        x_northerly = df_northerly['wind_vel'].values
+        y_southerly = df_southerly['Uss'].values / df_southerly['Tes'].values
+        y_northerly = df_northerly['Uss'].values / df_northerly['Tes'].values
+        
+        ax.scatter(x_southerly, y_southerly, marker='o', s=20, c=color_neg, label='Upwelling favorable')
+        ax.scatter(x_northerly, y_northerly, marker='o', s=20, c=color_pos, label='Downwelling favorable')
+        ax.plot(xlim, [1, 1], '--k')
+        ax.plot(xlim, [0, 0], '-k')
+        
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_ylabel('$U_{s}$ / $U_{E,s}$')
+    
+    fig = plt.figure(figsize=(8, 6))
+    plt.subplots_adjust(wspace=0.3)
+    ax1 = plt.subplot(1, 2, 1)
+    _plot_northerly_southerly(ax1, df_summer)
+    ax1.set_xlabel('Wind speed (m s$^{-1}$)')
+    
+    add_subtitle(ax1, '(a) Ekman transport ratios (Dec-Jan)')
+    ax1.set_facecolor(color_summer)
+    
+    ax2 = plt.subplot(1, 2, 2)
+    _plot_northerly_southerly(ax2, df_winter)
+    ax2.legend(loc='lower right')
+    ax2.set_xlabel('Wind speed (m s$^{-1}$)')
+    add_subtitle(ax2, '(b) Ekman transport ratios (May-Jul)')
+    ax2.set_facecolor(color_winter)
+    
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
+
 # --- DSWT
 def plot_overall_transport_map_with_monthly_climatology(df_timeseries:pd.DataFrame,
                                                         df_analysis:pd.DataFrame,
@@ -726,7 +989,7 @@ def plot_overall_transport_map_with_monthly_climatology(df_timeseries:pd.DataFra
     plot_monthly_histogram(time_m, dswt_transport_m/(24*60*60), yerr=dswt_transport_std/(24*60*60),
                            err_color=color_transport_std, color=color_transport, time_is_center=True,
                            ylabel='Transport m$^2$ s$^{-1}$',
-                           ylim=[0, 0.8],
+                           ylim=[0, 0.18],
                            ax=ax1, show=False)
     ax1.set_xlim(xlim)
     ax1.set_xticks(time_m)
@@ -770,7 +1033,7 @@ def plot_overall_transport_map_with_monthly_climatology(df_timeseries:pd.DataFra
                   clevels=[25, 50, 100, 200],
                   linewidths=[1.0, 2.0, 1.0, 1.0])
     
-    c = ax3.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, transport_overall/(24*60*60), cmap='viridis', vmin=0, vmax=0.6)
+    c = ax3.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, transport_overall/(24*60*60), cmap='viridis', vmin=0, vmax=0.15)
     add_subtitle(ax3, '(c) Mean DSWT transport')
     
     # move axis
@@ -797,15 +1060,17 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     df_analysis = convert_df_to_daily_means(df_analysis)
     
     time = np.array([pd.to_datetime(d) for d in df_dswt['time'].values])
-    l_filter = get_l_months(time, [5, 6, 7])
-    df_analysis = df_analysis.loc[l_filter]
-    df_dswt = df_dswt[l_filter]
+    # l_filter = get_l_months(time, [5, 6, 7])
+    # df_analysis = df_analysis.loc[l_filter]
+    # df_dswt = df_dswt[l_filter]
     
-    bhflux = df_analysis['bflux_sh'].values * 10**5
-    dsst = df_analysis['sst_sh'].values - df_analysis['sst_dp'].values
-    drhodx = df_dswt['drhodx'].values * 10**5
-    transport = df_dswt['transport_50m'].values / (24*60*60)
-    vel = df_dswt['transport_50m'].values / df_dswt['thickness_50m'].values / (24*60*60)
+    l_dswt = df_dswt['f_dswt'] > 0
+    
+    bhflux = df_analysis['bflux_sh'].values[l_dswt] * 10**5
+    dsst = df_analysis['sst_sh'].values[l_dswt] - df_analysis['sst_dp'].values[l_dswt]
+    drhodx = df_dswt['drhodx'].values[l_dswt] * 10**5
+    transport = df_dswt['transport'].values[l_dswt] / (24*60*60)
+    vel = df_dswt['vel'].values[l_dswt]
     
     n_samples = len(vel)
     n_bins = 30
@@ -828,7 +1093,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     ax1.set_ylim([-2, 0.0])
     add_subtitle(ax1, r'(a) Buoyancy vs $\frac{\partial\rho}{\partial x}$')
     r1, p1 = stats.pearsonr(bhflux, drhodx)
-    ax1.text(-4, -0.25, f'  $R$={np.round(r1, 2)}, $p$<0.05', va='top')
+    ax1.text(-4, -0.25, f'  $R$={np.round(r1, 2)}, $p$<0.05', va='top', path_effects=[pe.withStroke(linewidth=2, foreground="w")])
     
     ax2 = plt.subplot(2, 2, 2)
     # ax2.scatter(df_analysis['sst_sh'].values - df_analysis['sst_dp'].values, df_dswt['drhodx'].values * 10**5, marker='x', s=20, c=color_neg)
@@ -842,7 +1107,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     ax2.set_ylim([-2, 0.0])
     add_subtitle(ax2, r'(b) SST difference vs $\frac{\partial\rho}{\partial x}$')
     r2, p2 = stats.pearsonr(dsst, drhodx)
-    ax2.text(-6, -0.25, f'  $R$={np.round(r2, 2)}, $p$<0.05', va='top')
+    ax2.text(-6, -0.25, f'  $R$={np.round(r2, 2)}, $p$<0.05', va='top', path_effects=[pe.withStroke(linewidth=2, foreground="w")])
     
     ax3 = plt.subplot(2, 2, 3)
     # ax3.scatter(df_dswt['drhodx'].values * 10**5, df_dswt['transport_50m'].values / (24*60*60), marker='x', s=20, c=color_neg)
@@ -853,7 +1118,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     ax3.set_xlabel(r'$\frac{\partial\rho}{\partial x}$ (10$^{-5}$ kg m$^{-3}$ m$^{-1}$)')
     ax3.set_ylabel('Transport (m$^2$ s$^{-1}$)')
     ax3.set_xlim([-2, 0])
-    ax3.set_ylim([0, 1.4])
+    ax3.set_ylim([0, 0.6])
     add_subtitle(ax3, r'(c) $\frac{\partial\rho}{\partial x}$ vs transport')
     
     ax4 = plt.subplot(2, 2, 4)
@@ -863,7 +1128,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     ax4.set_xlabel(r'$\frac{\partial\rho}{\partial x}$ (10$^{-5}$ kg m$^{-3}$ m$^{-1}$)')
     ax4.set_ylabel('Velocity (m s$^{-1}$)')
     ax4.set_xlim([-2, 0])
-    ax4.set_ylim([0, 0.13])
+    ax4.set_ylim([0, 0.17])
     add_subtitle(ax4, r'(d) $\frac{\partial\rho}{\partial x}$ vs velocity')
     
     # colorbar
@@ -886,7 +1151,8 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     # u = sqrt(g * delta_rho/rho0 * h)
     dx = np.sqrt(1/grid_ds.pm.values*1/grid_ds.pn.values)
     dx = np.nanmean(dx[grid_ds.h.values <= 100])
-    h_dswt = np.nanmean(df_dswt.thickness.values)
+    # h_dswt = np.nanmean(df_dswt.thickness.values[l_dswt])
+    h_dswt = np.nanmean(df_dswt.mean_h.values[l_dswt])
     y_grav = np.sqrt(G / RHO0 * abs(x) * dx * h_dswt)
     ax4.plot(x*10**5, y_grav, '-w', linewidth=2)
     ax4.plot(x*10**5, y_grav, '-k', label='grav.')
@@ -930,17 +1196,19 @@ def plot_dswt_per_wind_dir(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, outpu
         df_wind_dir = df_analysis[l_wind_dir]
         df_dswt_wind_dir = df_dswt[l_wind_dir]
         
-        time = np.array([pd.to_datetime(d) for d in df_dswt_wind_dir['time'].values])
+        l_dswt = df_dswt_wind_dir['f_dswt'] > 0
+        
+        # time = np.array([pd.to_datetime(d) for d in df_dswt_wind_dir['time'].values])
         # l_summer = get_l_months(time, [1, 2, 3, 10, 11, 12])
         # l_time = get_l_months(time, [5, 6, 7])
 
-        x = df_wind_dir['wind_vel'].values
-        y = df_dswt_wind_dir['transport_50m'].values / (24*60*60)
-        c = df_dswt_wind_dir['drhodx'].values * 10**5
+        x = df_wind_dir['wind_vel'].values[l_dswt]
+        y = df_dswt_wind_dir['transport'].values[l_dswt] / (24*60*60)
+        c = df_dswt_wind_dir['drhodx'].values[l_dswt] * 10**5
         ax.set_ylabel('Transport (m$^2$ s$^{-1}$)')
         ax.set_xlabel(r'Wind speed (m s$^{-1}$)')
         ax.set_xlim([0, 17.5])
-        ax.set_ylim([0, 1.4])
+        ax.set_ylim([0, 0.6])
         
         # ax.scatter(x[l_summer], y[l_summer], marker='x', s=20, c=color_pos, label='Warm months')
         # ax.scatter(x[l_winter], y[l_winter], marker='x', s=20, c=color_neg, label='DSWT months')
@@ -1009,7 +1277,7 @@ def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFram
     # DSWT transport
     ax1.plot(time[l_time], df_dswt['transport_50m'].values[l_time]/(24*60*60), '-', color=color_transport, linewidth=2)
     ax1.set_ylabel('Transport (m$^2$ s$^{-1}$)')
-    ax1.set_ylim([0, 1.2])
+    ax1.set_ylim([0, 0.4])
     plot_monthly_grid(ax1, 2017, alpha=0.7)
     ax1.set_xlim(xlim)
     ax1.set_xticks(xticks)
@@ -1045,6 +1313,7 @@ def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFram
     
     # fill disruptive area
     ax1.fill_between(time[l_time], 0,1, where=l_disruptive, transform=ax1.get_xaxis_transform(), color=color_pos, alpha=0.1, ec='None')
+    ax0.fill_between(time[l_time], 0,1, where=l_disruptive, transform=ax0.get_xaxis_transform(), color=color_pos, alpha=0.1, ec='None')
     
     if highlight_dates is not None:
         l_highlight = get_l_time_range(time[l_time], highlight_dates[0], highlight_dates[1])
@@ -1293,7 +1562,7 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
     else:
         plt.close()
 
-def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFrame,
+def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFrame, df_analysis:pd.DataFrame,
                                    output_path=None, show=False):
     
     # monthly DSWT transport
@@ -1304,7 +1573,7 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     lon_range = [114.0, 116.0]
     lat_range = [-33.0, -31.0]
     grid_ds = xr.load_dataset(f'{get_dir_from_json("cwa")}grid.nc')
-    grid_ds = select_roms_subset(grid_ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
+    grid_ds = select_roms_subset(grid_ds, time_range=None, lon_range=lon_range, lat_range=lat_range)    
     
     z_w = get_z(grid_ds.Vtransform.values, grid_ds.s_w.values, grid_ds.h.values, grid_ds.Cs_w.values, grid_ds.hc.values)
     grid_ds.coords['z_w'] = (['s_w', 'eta_rho', 'xi_rho'], z_w)
@@ -1325,20 +1594,29 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     
     time_m, ucross_m, ucross_std = get_monthly_means(ocean_time, ucross_overall)
     
+    # monthly positive cross-shelf transport at bottom
+    df_analysis = convert_df_to_daily_means(df_analysis)
+    ub = df_analysis['Usb'].values
+    time_analysis = np.array([pd.to_datetime(t) for t in df_analysis['time'].values])
+    l_pos_ub = ub > 0
+    time_m_ub, ub_m, ub_std = get_monthly_means(time_analysis[l_pos_ub], ub[l_pos_ub])
+    
     # figure
     xlim = [datetime(2017, 1, 1), datetime(2017, 12, 31)]
     time_m_str = [t.strftime('%b') for t in time_m]
     
     dswt_percentage = (dswt_transport_m/(24*60*60)) / ucross_m * 100
+    dswt_percentage_b = (dswt_transport_m/(24*60*60)) / ub_m * 100
     
     fig = plt.figure(figsize=(8, 5))
     plt.rcParams['font.size'] = 14
     
     # timeseries
     ax = plt.axes()
-    plot_monthly_histogram(time_m, dswt_percentage, ylabel='Offshore transport due to DSWT (%)',
-                           ylim=[0, 50], time_is_center=True, color=color_transport,
-                           ax=ax, show=False)
+    plot_multi_bar_monthly_histogram(time_m, [dswt_percentage_b, dswt_percentage], [color_neg, color_transport],
+                                     ['Bottom', 'Overall'], ylim=[0, 45], legend_loc='lower right',
+                                     ylabel='Offshore transport due to DSWT (%)',
+                                     ax=ax, show=False)
     ax.set_xlim(xlim)
     ax.set_xticks(time_m)
     ax.set_xticklabels(time_m_str)
@@ -1348,6 +1626,10 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     # save and show figure
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        
+        df = pd.DataFrame(data=np.array([time_m, dswt_percentage_b, dswt_percentage]).transpose(), columns=['time', 'bottom', 'overall'])
+        df.to_csv(f'{os.path.splitext(output_path)[0]}.csv', index=False)
+        
     if show == True:
         plt.show()
     else:
@@ -1731,73 +2013,6 @@ def plot_dswt_map(df_transport:pd.DataFrame,
     else:
         plt.close()
 
-def plot_us_ue_comparison(df_analysis:pd.DataFrame, output_path=None, show=False):    
-    
-    time = np.array([pd.to_datetime(d) for d in df_analysis['time'].values])
-    l_summer = np.logical_or(get_l_time_range(time, datetime(2017, 10, 1), datetime(2017, 12, 31)),
-                             get_l_time_range(time, datetime(2017, 1, 1), datetime(2017, 3, 31)))
-    l_winter = get_l_time_range(time, datetime(2017, 4, 1), datetime(2017, 9, 30))
-    
-    df_summer = df_analysis.loc[l_summer]
-    df_winter = df_analysis.loc[l_winter]
-    
-    def _plot_northerly_southerly(ax, df):
-        l_southerly, l_northerly, _, _ = _split_into_wind_dirs(df)
-        df_southerly = df.loc[l_southerly]
-        df_northerly = df.loc[l_northerly]
-        
-        x_southerly = df_southerly['wind_vel'].values
-        l_use_s = x_southerly >= 2.5
-        x_northerly = df_northerly['wind_vel'].values
-        l_use_n = x_northerly >= 2.5
-        y_southerly = (df_southerly['Uss'].values - df_southerly['Tes'].values) / df_southerly['Tes'].values
-        y_northerly = (df_northerly['Uss'].values - df_northerly['Tes'].values) / df_northerly['Tes'].values
-        
-        ax.scatter(x_southerly[l_use_s], y_southerly[l_use_s], marker='o', s=20, c=color_neg, label='Upwelling favorable')
-        ax.scatter(x_northerly[l_use_n], y_northerly[l_use_n], marker='o', s=20, c=color_pos, label='Downwelling favorable')
-        ax.plot(xlim, [1, 1], '--k')
-        ax.plot(xlim, [0, 0], '-k')
-    
-    xlim = [2, 15]
-    
-    fig = plt.figure(figsize=(8, 6))
-    plt.subplots_adjust(wspace=0.3)
-    
-    # ax1 = plt.subplot(1, 2, 1)
-    # ax1.scatter(x_southerly[l_use_s], df_southerly['hes'].values[l_use_s], marker='o', s=20, c='k', label='h$_{Ekman, s}$')
-    # ax1.scatter(x_northerly[l_use_n], df_northerly['hes'].values[l_use_n], marker='o', s=20, c='k')
-    # ax1.scatter(x_southerly[l_use_s], -df_southerly['zss'].values[l_use_s], marker='o', s=20, c=color_neg, label=r'$\delta_s$')
-    # ax1.scatter(x_northerly[l_use_n], -df_northerly['zss'].values[l_use_n], marker='o', s=20, c=color_pos, label=r'$\delta_s$')
-    # ax1.plot(xlim, [-50, -50], '--k')
-    # ax1.set_ylabel('Layer depth (m)')
-    # ax1.set_xlabel('Wind speed (m s$^{-1}$)')
-    # ax1.set_xlim(xlim)
-    # ax1.legend(loc='lower left')
-    # ax1.set_ylim([-101, -10])
-    # add_subtitle(ax1, '(a) Surface boundary layer')
-    
-    ax1 = plt.subplot(1, 2, 1)
-    _plot_northerly_southerly(ax1, df_summer)
-    ax1.legend(loc='lower right')
-    ax1.set_ylabel('$U_{s}$ / $U_{E,s}$')
-    ax1.set_xlim(xlim)
-    ax1.set_ylim([-10, 20])
-    add_subtitle(ax1, '(a) Surface cross-shelf transport (Oct-Mar)')
-    
-    ax2 = plt.subplot(1, 2, 2)
-    _plot_northerly_southerly(ax2, df_winter)
-    ax2.set_xlabel('Wind speed (m s$^{-1}$)')
-    ax2.set_xlim(xlim)
-    ax2.set_ylim([-10, 20])
-    add_subtitle(ax2, '(b) Surface cross-shelf transport (Apr-Sep)')
-    
-    if output_path is not None:
-        plt.savefig(output_path, bbox_inches='tight', dpi=300)
-    if show == True:
-        plt.show()
-    else:
-        plt.close()
-
 def plot_tests(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, output_path=None, show=False):
     df_analysis = convert_df_to_daily_means(df_analysis)
     
@@ -1982,6 +2197,8 @@ if __name__ == '__main__':
     
     years = np.arange(2000, 2024)
     
+    grid_ds = xr.load_dataset(grid_file)
+    
     # ---------------------------------------------------
     # Introduction
     # ---------------------------------------------------
@@ -1999,20 +2216,17 @@ if __name__ == '__main__':
     
     
     # transects + performance
-    
+    plot_transects_and_performance(grid_ds, output_path=f'{plot_dir}transects_performance.jpg')
     
     # ---------------------------------------------------
     # Results
     # ---------------------------------------------------
-    
     # --- WCS data ---
     ucross_ds = xr.load_dataset(f'{input_dir_analysis}cross-shelf/ucross_2017.nc')
     df_dswt_2017 = pd.read_csv(f'{input_dir_processed}dswt_timeseries_2017.csv')
     df_analysis_2017 = pd.read_csv(f'{input_dir_analysis}analysis_2017.csv')
     df_transport_2017 = pd.read_csv(f'{input_dir_processed}dswt_transport_2017.csv')
     df_transport_2017_nointerp = pd.read_csv(f'{input_dir_processed}dswt_transport_2017_no-interp.csv')
-    
-    grid_ds = xr.load_dataset(grid_file)
     
     df_analysis = read_df_from_multiple_csvs(input_dir_analysis, years, 'analysis_')
     df_dswt = read_df_from_multiple_csvs(input_dir_processed, years, 'dswt_timeseries_')
@@ -2027,6 +2241,7 @@ if __name__ == '__main__':
     plot_u_prime_evolution(ucross_ds, df_analysis_2017, output_path=f'{plot_dir}uprime_timeseries.jpg')
     
     plot_us_ub_dynamics(df_analysis_2017, output_path=f'{plot_dir}Us_Ub_Ue_comparison.jpg')
+    plot_us_ue_comparison(df_analysis_2017, output_path=f'{plot_dir}Us_Ue_comparison.jpg')
     
     # --- WCS DSWT ----
     plot_overall_transport_map_with_monthly_climatology(df_dswt, df_analysis, df_transport, grid_ds, output_path=f'{plot_dir}dswt_climatology_map.jpg')
@@ -2039,26 +2254,22 @@ if __name__ == '__main__':
     plot_dswt_timeseries_evolution(df_dswt_2017, df_analysis_2017, highlight_dates=[event_start, event_end],
                                    output_path=f'{plot_dir}dswt_timeseries_evolution.jpg')
 
-    plot_yearly_events(dswt_events, years, output_path=f'{plot_dir}dswt_event_statistics.jpg')
     plot_dswt_event(df_transport_2017_nointerp, np.arange(event_start, event_end + timedelta(days=1), timedelta(days=1)),
                     df_analysis_2017, output_path=f'{plot_dir}dswt_event_example.jpg')
     
     # --- WCS cross-shelf export comparison with DSWT ---
-    plot_overall_export_comparison(ucross_ds, df_dswt_2017, output_path=f'{plot_dir}dswt_export_contribution.jpg')
-    
+    plot_overall_export_comparison(ucross_ds, df_dswt_2017, df_analysis_2017, output_path=f'{plot_dir}dswt_export_contribution.jpg')
     
     # ---------------------------------------------------
     # SI
     # ---------------------------------------------------
-    # plot_yearly_events(dswt_events, years, output_path=f'{plot_dir}dswt_events_statistics.jpg')
+    # plot_yearly_events(dswt_events, years, output_path=f'{plot_dir}dswt_event_statistics.jpg')
     
     # ---------------------------------------------------
     # Temp
     # ---------------------------------------------------
     # plot_tests(df_dswt, df_analysis, output_path=f'{plot_dir}temp.jpg')
     # plot_tests_per_wind_dir(df_dswt, df_analysis, output_path=f'{plot_dir}temp.jpg')
-    
-    # plot_us_ue_comparison(pd.read_csv(f'{input_dir_analysis}analysis_2017.csv'), output_path=f'{plot_dir}Us_Ue_comparison.jpg')
     
     # start_date = datetime(2017, 5, 1)
     # end_date = datetime(2017, 5, 31)
