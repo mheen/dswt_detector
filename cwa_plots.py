@@ -475,10 +475,17 @@ def plot_u_bar_overview(ucross_ds:xr.Dataset,
     grid_ds = xr.load_dataset(f'{get_dir_from_json("cwa")}grid.nc')
     grid_ds = select_roms_subset(grid_ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
     
-    ocean_time = np.array([pd.to_datetime(d) for d in ucross_ds['ocean_time'].values])
-    
     ubar = np.nanmean(ucross_ds['u_bar'].values, axis=0)
     ubar[ubar == 0] = np.nan
+    
+    ocean_time = np.array([pd.to_datetime(d) for d in ucross_ds['ocean_time'].values])
+    l_jan = get_l_time_range(ocean_time, datetime(2017, 1, 1), datetime(2017, 1, 31))
+    l_jun = get_l_time_range(ocean_time, datetime(2017, 6, 1), datetime(2017, 6, 30))
+    
+    ubar_jan = np.nanmean(ucross_ds['u_bar'].values[l_jan, :, :], axis=0)
+    ubar_jan[ubar_jan == 0] = np.nan
+    ubar_jun = np.nanmean(ucross_ds['u_bar'].values[l_jun, :, :], axis=0)
+    ubar_jun[ubar_jun == 0] = np.nan
     
     lon_contour50, lat_contour50, _ = get_roms_contour_coordinates(grid_ds, lon_range, lat_range, 50)
     ucross_ds_contour50 = get_roms_ds_along_contour(ucross_ds, grid_ds, lon_contour50, lat_contour50)
@@ -505,16 +512,16 @@ def plot_u_bar_overview(ucross_ds:xr.Dataset,
     ylim = [-0.1, 0.1]
     ylim_sv = [-2.0, 2.0]
     
-    fig = plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(8, 11))
     
-    ax1 = plt.subplot(3, 3, (1, 2))
+    ax1 = plt.subplot(5, 2, (1, 2))
     plot_monthly_histogram(time_m, ubar50, yerr=ubar50_std, err_color=color_neg_std,
                            color=color_neg, ylim=ylim, ax=ax1, show=False, time_is_center=True)
     ax1.plot(xlim, [0, 0], '-k')
     ax1.set_xticklabels([])
     ax1.set_ylabel(r'$\bar{u}$ (m s$^{-1}$)')
     ax1.set_xlim(xlim)
-    add_subtitle(ax1, '(a) Depth-mean cross-shelf velocity across 50 m')
+    add_subtitle(ax1, '(a) Cross-shelf velocity 50 m')
     
     # ax11 = ax1.twinx()
     # ax11.vlines(time_m, ubar50_sv_m-ubar50_sv_std, ubar50_sv_m+ubar50_sv_std, colors='#808080')
@@ -522,14 +529,14 @@ def plot_u_bar_overview(ucross_ds:xr.Dataset,
     # ax11.set_ylim(ylim_sv)
     # ax11.set_ylabel(r'$\bar{U}$ (Sv)')
     
-    ax2 = plt.subplot(3, 3, (4, 5))
+    ax2 = plt.subplot(5, 2, (3, 4))
     plot_monthly_histogram(time_m, ubar100, yerr=ubar100_std, err_color=color_neg_std,
                            color=color_neg, ylim=ylim, ax=ax2, show=False, time_is_center=True)
     ax2.plot(xlim, [0, 0], '-k')
     ax2.set_xticklabels([])
     ax2.set_ylabel(r'$\bar{u}$ (m s$^{-1}$)')
     ax2.set_xlim(xlim)
-    add_subtitle(ax2, '(b) Depth-mean cross-shelf velocity across 100 m')
+    add_subtitle(ax2, '(b) Cross-shelf velocity 100 m')
     
     # ax22 = ax2.twinx()
     # ax22.vlines(time_m, ubar100_sv_m-ubar100_sv_std, ubar100_sv_m+ubar100_sv_std, colors='#808080')
@@ -537,13 +544,13 @@ def plot_u_bar_overview(ucross_ds:xr.Dataset,
     # ax22.set_ylim(ylim_sv)
     # ax22.set_ylabel(r'$\bar{U}$ (Sv)')
     
-    ax3 = plt.subplot(3, 3, (7, 8))
+    ax3 = plt.subplot(5, 2, (5, 6))
     plot_monthly_histogram(time_m, ubar200, yerr=ubar200_std, err_color=color_neg_std,
                            color=color_neg, ylim=ylim, ax=ax3, show=False, time_is_center=True)
     ax3.plot(xlim, [0, 0], '-k')
     ax3.set_ylabel(r'$\bar{u}$ (m s$^{-1}$)')
     ax3.set_xlim(xlim)
-    add_subtitle(ax3, '(c) Depth-mean cross-shelf velocity across 200 m')
+    add_subtitle(ax3, '(c) Cross-shelf velocity 200 m')
     
     # ax33 = ax3.twinx()
     # ax33.vlines(time_m, ubar200_sv_m-ubar200_sv_std, ubar200_sv_m+ubar200_sv_std, colors='#808080')
@@ -551,58 +558,7 @@ def plot_u_bar_overview(ucross_ds:xr.Dataset,
     # ax33.set_ylim(ylim_sv)
     # ax33.set_ylabel(r'$\bar{U}$ (Sv)')
     
-    ax4 = plt.subplot(3, 3, (3, 9), projection=ccrs.PlateCarree())
-    plot_basic_map(ax4, lon_range_default, lat_range_default,
-                   meridians=meridians_default, parallels=parallels_default)
-    c = ax4.pcolormesh(ucross_ds.lon_rho.values, ucross_ds.lat_rho.values, ubar, cmap=cmap, vmin=vmin, vmax=vmax)
-    plot_contours(ucross_ds.lon_rho.values, ucross_ds.lat_rho.values, ucross_ds.h.values,
-                  lon_range_default, lat_range_default,
-                  ax=ax4, show=False,
-                  clevels=[50, 100, 200],
-                  linewidths=[2.0, 1.0, 1.0])
-    add_subtitle(ax4, '(d) Depth-mean cross-shelf velocity')
-    
-    # rescale map
-    _, b1, _, h1 = ax1.get_position().bounds
-    l3, b3, w3, h3 = ax3.get_position().bounds
-    l4, _, w4, h4 = ax4.get_position().bounds
-    
-    ax4.set_position([l4+0.02, b3, w4/h4*(b1+h1-b3), b1+h1-b3])
-    
-    # colorbar
-    l4n, b4n, w4n, h4n = ax4.get_position().bounds
-    cax = fig.add_axes([l4n+w4n+0.02, b4n, 0.02, h4n])
-    cbar = plt.colorbar(c, cax=cax)
-    cbar.set_label('Depth mean cross-shelf velocity (m s$^{-1}$)')
-    
-    if output_path is not None:
-        plt.savefig(output_path, bbox_inches='tight', dpi=300)
-    if show == True:
-        plt.show()
-    else:
-        plt.close()
-
-def plot_u_bar_seasonality_maps(ucross_ds:xr.Dataset,
-                   cmap='RdYlBu_r', vmin=-0.2, vmax=0.2,
-                   output_path=None, show=False):
-    
-    lon_range = [114.0, 116.0]
-    lat_range = [-33.0, -31.0]
-    grid_ds = xr.load_dataset(f'{get_dir_from_json("cwa")}grid.nc')
-    grid_ds = select_roms_subset(grid_ds, time_range=None, lon_range=lon_range, lat_range=lat_range)
-    
-    ocean_time = np.array([pd.to_datetime(d) for d in ucross_ds['ocean_time'].values])
-    l_jan = get_l_time_range(ocean_time, datetime(2017, 1, 1), datetime(2017, 1, 31))
-    l_jun = get_l_time_range(ocean_time, datetime(2017, 6, 1), datetime(2017, 6, 30))
-    
-    ubar_jan = np.nanmean(ucross_ds['u_bar'].values[l_jan, :, :], axis=0)
-    ubar_jan[ubar_jan == 0] = np.nan
-    ubar_jun = np.nanmean(ucross_ds['u_bar'].values[l_jun, :, :], axis=0)
-    ubar_jun[ubar_jun == 0] = np.nan
-    
-    fig = plt.figure(figsize=(8, 6))
-    
-    ax4 = plt.subplot(1, 2, 1, projection=ccrs.PlateCarree())
+    ax4 = plt.subplot(5, 2, (7, 9), projection=ccrs.PlateCarree())
     plot_basic_map(ax4, lon_range_default, lat_range_default,
                    meridians=meridians_default, parallels=parallels_default)
     c = ax4.pcolormesh(ucross_ds.lon_rho.values, ucross_ds.lat_rho.values, ubar_jan, cmap=cmap, vmin=vmin, vmax=vmax)
@@ -611,9 +567,9 @@ def plot_u_bar_seasonality_maps(ucross_ds:xr.Dataset,
                   ax=ax4, show=False,
                   clevels=[50, 100, 200, 1000],
                   linewidths=[2.0, 1.0, 1.0, 1.0])
-    add_subtitle(ax4, r'(a) January $\bar{u}$', location='upper right')
+    add_subtitle(ax4, r'(d) January $\bar{u}$', location='upper right')
     
-    ax5 = plt.subplot(1, 2, 2, projection=ccrs.PlateCarree())
+    ax5 = plt.subplot(5, 2, (8, 10), projection=ccrs.PlateCarree())
     plot_basic_map(ax5, lon_range_default, lat_range_default,
                    meridians=meridians_default, parallels=parallels_default)
     c = ax5.pcolormesh(ucross_ds.lon_rho.values, ucross_ds.lat_rho.values, ubar_jun, cmap=cmap, vmin=vmin, vmax=vmax)
@@ -623,12 +579,25 @@ def plot_u_bar_seasonality_maps(ucross_ds:xr.Dataset,
                   clevels=[50, 100, 200, 1000],
                   linewidths=[2.0, 1.0, 1.0, 1.0])
     ax5.set_yticklabels([])
-    add_subtitle(ax5, r'(b) June $\bar{u}$', location='upper right')
+    add_subtitle(ax5, r'(e) June $\bar{u}$', location='upper right')
+    
+    # rescale maps
+    l3, b3, w3, h3 = ax3.get_position().bounds
+    l4, b4, w4, h4 = ax4.get_position().bounds
+    l5, b5, w5, h5 = ax5.get_position().bounds
+    
+    ww = w3/2-0.02
+    hh = h4/w4 * ww
+    bb = b3-hh-0.04
+    ax4.set_position([l3, bb, ww, hh])
+    l4, _, w4, h4 = ax4.get_position().bounds
+    ax5.set_position([l3+w3-ww, bb, ww, hh])
     
     # colorbar
-    l5n, b5n, w5n, h5n = ax5.get_position().bounds
-    cax = fig.add_axes([l5n+w5n+0.02, b5n, 0.02, h5n])
-    cbar = plt.colorbar(c, cax=cax)
+    l5, b5, w5, h5 = ax5.get_position().bounds
+    # cax = fig.add_axes([l5+w5+0.02, b5, 0.02, h5])
+    cax = fig.add_axes([l3, b5-0.06, w3, 0.02])
+    cbar = plt.colorbar(c, cax=cax, orientation='horizontal')
     cbar.set_label('Depth mean cross-shelf velocity (m s$^{-1}$)')
     
     if output_path is not None:
@@ -2237,7 +2206,6 @@ if __name__ == '__main__':
     
     # --- WCS general cross-shelf transport ---
     plot_u_bar_overview(ucross_ds, output_path=f'{plot_dir}ubar_overview.jpg')
-    plot_u_bar_seasonality_maps(ucross_ds, output_path=f'{plot_dir}ubar_seasonality.jpg')
     plot_u_prime_evolution(ucross_ds, df_analysis_2017, output_path=f'{plot_dir}uprime_timeseries.jpg')
     
     plot_us_ub_dynamics(df_analysis_2017, output_path=f'{plot_dir}Us_Ub_Ue_comparison.jpg')
