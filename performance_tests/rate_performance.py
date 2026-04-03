@@ -265,9 +265,9 @@ if __name__ == '__main__':
     transects_file = f'input/transects/{model}_transects.json'
     transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
 
-    performance_file = f'performance_tests/output/{model}_{year}_performance_comparison.csv'
+    performance_file = f'performance_tests/output/{model}/{model}_{year}_performance_comparison.csv'
     df = pd.read_csv(performance_file)
     
-    plot_performance_summary(df, output_path=f'performance_tests/output/{model}_performance_summary.jpg')
+    plot_performance_summary(df, output_path=f'performance_tests/output/{model}/{model}_performance_summary.jpg')
     
-    plot_monthly_performance(df, output_path=f'performance_tests/output/{model}_performance_monthly.jpg')
+    plot_monthly_performance(df, output_path=f'performance_tests/output/{model}/{model}_performance_monthly.jpg')

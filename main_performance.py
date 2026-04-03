@@ -34,7 +34,7 @@ n_files_to_check = 10
 n_times_to_check = 2
 n_transects_per_file_to_check = 5
 
-focus_months = None # set to None for full year,
+focus_months = [5, 6] # set to None for full year,
 # allowing this option to focus more on DSWT times
 # rather than confirming obvious false values
 
@@ -42,9 +42,9 @@ focus_months = None # set to None for full year,
 recheck = False
 
 # --- Output files (no need to change)
-output_comparison = f'performance_tests/output/{model}_{year}_performance_comparison.csv'
-output_performance = f'performance_tests/output/{model}_performance_summary.jpg'
-output_performance_monthly = f'performance_tests/output/{model}_performance_monthly.jpg'
+output_comparison = f'performance_tests/output/{model}/{model}_{year}_performance_comparison.csv'
+output_performance = f'performance_tests/output/{model}/{model}_performance_summary.jpg'
+output_performance_monthly = f'performance_tests/output/{model}/{model}_performance_monthly.jpg'
 create_dir_if_does_not_exist(os.path.dirname(output_comparison))
 
 # --------------------------------------------------------
@@ -52,9 +52,9 @@ create_dir_if_does_not_exist(os.path.dirname(output_comparison))
 # --------------------------------------------------------
 transects = read_transects_in_lon_lat_range_from_json(transects_file, lon_range, lat_range)
 
-# manual_performance_checks(input_dir, grid_file, config, year, transects,
-#                           focus_months, n_files_to_check, n_transects_per_file_to_check, n_times_to_check,
-#                           output_comparison)
+manual_performance_checks(input_dir, grid_file, config, year, transects,
+                          focus_months, n_files_to_check, n_transects_per_file_to_check, n_times_to_check,
+                          output_comparison)
 
 df = pd.read_csv(output_comparison)
 
