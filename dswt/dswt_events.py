@@ -80,7 +80,7 @@ class DswtEvents:
             yearly_events = []
             
             z = df_year[f'transport_{depth_contour}m'].values / (24*60*60)
-            i_peaks, properties = find_peaks(z, height=0.05, width=(1, 20)) # width specifies minimum and maximum width
+            i_peaks, properties = find_peaks(z, height=0.02, width=(1, 20)) # width specifies minimum and maximum width
             i_left = np.floor(properties['left_ips']).astype(int)
             i_right = np.ceil(properties['right_ips']).astype(int)
             
