@@ -6,6 +6,7 @@ from dswt.dswt_events import DswtEvents
 from dswt.dswt_detection import determine_dswt_along_transect
 
 from cwa_analyses import get_roms_contour_coordinates, get_roms_ds_along_contour
+from cwa_glider_validation import compare_glider_model_dswt
 
 from transects import read_transects_in_lon_lat_range_from_json, get_depth_contours
 
@@ -156,6 +157,18 @@ def _get_monthly_performance_data(df:pd.DataFrame):
     
     return time_m, counts_m, transport_correct_m, transport_incorrect_m, transport_uncertain_m
 
+def _extract_event_data(dswt_events:DswtEvents, parameter:str):
+    values = []
+    for i in range(len(years)):
+        values.append([getattr(d, parameter) for d in dswt_events.events[i]])
+
+    values_flat = []
+    for i in range(len(values)):
+        for j in range(len(values[i])):
+            values_flat.append(values[i][j])
+    values_flat = np.array(values_flat)
+    return values_flat
+
 def read_analyses_from_multiple_csvs(input_dir:str, years:list) -> pd.DataFrame:
     df = None
     
@@ -258,7 +271,7 @@ def plot_overview_map(glider_ds:xr.Dataset, bathy_ds:xr.Dataset, global_dswt_df:
         cbar.set_label(cbar_label)
         
     ax3 = plt.subplot(5, 3, 10)
-    _plot_glider_transect(ax3, glider_ds.density.values-1000, 24.8, 25.6, cm.cm.thermal_r, '$\sigma_T$ (kg m$^{-3}$)')
+    _plot_glider_transect(ax3, glider_ds.density.values-1000, 24.8, 25.6, cm.cm.thermal_r, r'$\sigma_T$ (kg m$^{-3}$)')
     add_subtitle(ax3, '(c) Density', location='lower right')
     
     ax4 = plt.subplot(5, 3, 11)
@@ -274,7 +287,7 @@ def plot_overview_map(glider_ds:xr.Dataset, bathy_ds:xr.Dataset, global_dswt_df:
     add_subtitle(ax5, '(e) Salinity', location='lower right')
     
     ax6 = plt.subplot(5, 3, 13)
-    _plot_glider_transect(ax6, glider_ds.ox2.values, 180, 190, cm.cm.tempo, 'Dissolved oxygen ($\mu$mol kg$^{-1}$)', move_up=False)
+    _plot_glider_transect(ax6, glider_ds.ox2.values, 180, 190, cm.cm.tempo, r'Dissolved oxygen ($\mu$mol kg$^{-1}$)', move_up=False)
     add_subtitle(ax6, '(f) Dissolved O$_2$', location='lower right')
     
     ax7 = plt.subplot(5, 3, 14)
@@ -1062,7 +1075,8 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     ax1.set_ylim([-2, 0.0])
     add_subtitle(ax1, r'(a) Buoyancy vs $\frac{\partial\rho}{\partial x}$')
     r1, p1 = stats.pearsonr(bhflux, drhodx)
-    ax1.text(-4, -0.25, f'  $R$={np.round(r1, 2)}, $p$<0.05', va='top', path_effects=[pe.withStroke(linewidth=2, foreground="w")])
+    t1 = ax1.text(-4, -0.25, f'  $R$={np.round(r1, 2)}, $p$<0.05', va='top')#, path_effects=[pe.withStroke(linewidth=2, foreground="w")])
+    t1.set_bbox(dict(facecolor='w', alpha=0.5, edgecolor='none'))
     
     ax2 = plt.subplot(2, 2, 2)
     # ax2.scatter(df_analysis['sst_sh'].values - df_analysis['sst_dp'].values, df_dswt['drhodx'].values * 10**5, marker='x', s=20, c=color_neg)
@@ -1076,7 +1090,8 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     ax2.set_ylim([-2, 0.0])
     add_subtitle(ax2, r'(b) SST difference vs $\frac{\partial\rho}{\partial x}$')
     r2, p2 = stats.pearsonr(dsst, drhodx)
-    ax2.text(-6, -0.25, f'  $R$={np.round(r2, 2)}, $p$<0.05', va='top', path_effects=[pe.withStroke(linewidth=2, foreground="w")])
+    t2 = ax2.text(-6, -0.25, f'  $R$={np.round(r2, 2)}, $p$<0.05', va='top')#, path_effects=[pe.withStroke(linewidth=2, foreground="w")])
+    t2.set_bbox(dict(facecolor='w', alpha=0.5, edgecolor='none'))
     
     ax3 = plt.subplot(2, 2, 3)
     # ax3.scatter(df_dswt['drhodx'].values * 10**5, df_dswt['transport_50m'].values / (24*60*60), marker='x', s=20, c=color_neg)
@@ -1115,6 +1130,8 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     # this is not strictly the delta_rho meant here.
     # instead, delta_rho should be the difference between
     # the dense plume and ambient water.
+    # The order of magnitude of these is similar though, so I expect
+    # the effects on an initial estimate will be minimal.
     
     # gravity current estimate
     # u = sqrt(g * delta_rho/rho0 * h)
@@ -1296,8 +1313,8 @@ def plot_dswt_timeseries_evolution(df_dswt:pd.DataFrame, df_analysis:pd.DataFram
         plt.close()
 
 def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
-                    df_analysis:WindTimeseries, transect_name='t240',
-                    vmin=20.0, vmax=23.0, cmap='RdYlBu_r',
+                    df_analysis:WindTimeseries, transect_name='t270', #transect_name='t240',
+                    vmin_map=19.5, vmax_map=23.0, vmin_transect=21.0, vmax_transect=24.0, cmap='RdYlBu_r',
                     output_path=None, show=False):
     
     dates = np.array([pd.to_datetime(d) for d in dates])
@@ -1308,6 +1325,8 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
     
     transects = read_transects_in_lon_lat_range_from_json('input/transects/cwa_transects.json',
                                                           [114.0, 116.0], [-33.0, -31.0])
+    eta = transects[transect_name]['eta']
+    xi = transects[transect_name]['xi']
     config = read_config('cwa')
     
     fig = plt.figure(figsize=(8, 10))
@@ -1373,7 +1392,7 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
                     ax=ax, show=False,
                     clevels=[50, 200],
                     linewidths=[0.8, 0.8], clabel=False)
-        c = ax.pcolormesh(lon, lat, temp, vmin=vmin, vmax=vmax, cmap=cmap, zorder=1)
+        c = ax.pcolormesh(lon, lat, temp, vmin=vmin_map, vmax=vmax_map, cmap=cmap, zorder=1)
         q = ax.quiver(lon_thin, lat_thin, u_thin, v_thin, scale=qscale, width=qwidth, color='#252525')
         
         l, b, w, h = ax.get_position().bounds
@@ -1383,10 +1402,7 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
         
         return c, q, roms_ds
     
-    def _plot_dswt_transect(ax:plt.axes, transect_name:str, roms_ds:xr.Dataset, ax_map=None):
-        eta = transects[transect_name]['eta']
-        xi = transects[transect_name]['xi']
-        
+    def _plot_dswt_transect(ax:plt.axes, roms_ds:xr.Dataset, ax_map=None):
         transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
         
         (t_dswt, _, vel, thickness, _, distance, _, _, h, _, _, _, _) = determine_dswt_along_transect(transect_ds, config)
@@ -1394,6 +1410,7 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
         # model transect
         x = transect_ds.distance.values
         z = transect_ds.z_rho.values
+        max_dist = np.nanmax(x)
         
         x_dswt = distance
         z_dswt = -h + thickness
@@ -1406,7 +1423,10 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
         
         h = -transect_ds.h.values
         
-        ax.pcolormesh(x, z, d, cmap=cmap, vmin=vmin, vmax=vmax)
+        xticks = np.arange(0, max_dist, 10000)
+        xticklabels = (xticks / 1000).astype(int)
+        
+        c = ax.pcolormesh(x, z, d, cmap=cmap, vmin=vmin_transect, vmax=vmax_transect)
         q = ax.quiver(x_dswt, z_dswt, u_dswt, np.zeros(len(u_dswt)), scale=qscale, width=qwidth, color='#252525')
         ax.fill_between(x, -110, h, color='#d2d2d2', edgecolor='k')
         ax.set_ylim([-100, 0])
@@ -1414,18 +1434,20 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
         ax.set_yticks([0, -25, -50, -75, -100])
         ax.set_yticklabels([0, 25, 50, 75, 100])
         ax.set_xlim([x[0], x[-1]])
-        ax.set_xlabel('Distance along transect (m)')
+        ax.set_xticks(xticks)
+        ax.set_xticklabels(xticklabels)
+        ax.set_xlabel('Distance along transect (km)')
         
         # add transect location to map
         if ax_map is not None:
             ax_map.plot(transect_ds.lon_rho.values, transect_ds.lat_rho.values, '-', color='w', linewidth=2)
             ax_map.plot(transect_ds.lon_rho.values, transect_ds.lat_rho.values, '-', color='#C70039', linewidth=1)
         
-        return q
+        return c, q
         
     # --- maps
     ax1 = plt.subplot(10, 3, (1, 10), projection=ccrs.PlateCarree())
-    c, _, roms_ds1 = _plot_dswt_map(ax1, dates[0])
+    c_map, _, roms_ds1 = _plot_dswt_map(ax1, dates[0])
     
     ax2 = plt.subplot(10, 3, (2, 11), projection=ccrs.PlateCarree())
     _, _, roms_ds2 = _plot_dswt_map(ax2, dates[1])
@@ -1449,34 +1471,34 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
     
     # --- transects
     ax11 = plt.subplot(10, 3, 13)
-    _ = _plot_dswt_transect(ax11, transect_name, roms_ds1, ax1)
+    c_transect, _ = _plot_dswt_transect(ax11, roms_ds1, ax1)
     add_subtitle(ax11, f'(a) {(dates[0]).strftime("%d-%m-%Y")}', location='lower left')
     
     ax22 = plt.subplot(10, 3, 14)
-    _ = _plot_dswt_transect(ax22, transect_name, roms_ds2, ax2)
+    _, _ = _plot_dswt_transect(ax22, roms_ds2, ax2)
     ax22.set_yticklabels([])
     ax22.set_ylabel('')
     add_subtitle(ax22, f'(b) {dates[1].strftime("%d-%m-%Y")}', location='lower left')
     
     ax33 = plt.subplot(10, 3, 15)
-    _ = _plot_dswt_transect(ax33, transect_name, roms_ds3, ax3)
+    _, q = _plot_dswt_transect(ax33, roms_ds3, ax3)
     ax33.set_yticklabels([])
     ax33.set_ylabel('')
     add_subtitle(ax33, f'(c) {dates[2].strftime("%d-%m-%Y")}', location='lower left')
     
     # new row
     ax44 = plt.subplot(10, 3, 28)
-    _ = _plot_dswt_transect(ax44, transect_name, roms_ds4, ax4)
+    _, _ = _plot_dswt_transect(ax44, roms_ds4, ax4)
     add_subtitle(ax44, f'(d) {dates[3].strftime("%d-%m-%Y")}', location='lower left')
     
     ax55 = plt.subplot(10, 3, 29)
-    _ = _plot_dswt_transect(ax55, transect_name, roms_ds5, ax5)
+    _, _ = _plot_dswt_transect(ax55, roms_ds5, ax5)
     ax55.set_yticklabels([])
     ax55.set_ylabel('')
     add_subtitle(ax55, f'(e) {dates[4].strftime("%d-%m-%Y")}', location='lower left')
     
     ax66 = plt.subplot(10, 3, 30)
-    q = _plot_dswt_transect(ax66, transect_name, roms_ds6, ax6)
+    _, _ = _plot_dswt_transect(ax66, roms_ds6, ax6)
     ax66.set_yticklabels([])
     ax66.set_ylabel('')
     add_subtitle(ax66, f'(f) {dates[5].strftime("%d-%m-%Y")}', location='lower left')
@@ -1514,15 +1536,32 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
     ax55.set_position([l55, bnew2, w55, h55])
     ax66.set_position([l66, bnew2, w66, h66])
     
-    # colorbar
-    l44, b44, w44, h44 = ax44.get_position().bounds
-    l66, _, w66, h66 = ax66.get_position().bounds
-    cax = fig.add_axes([l44, b44-0.1, l66 + w66 - l44, 0.02])
-    cbar = plt.colorbar(c, cax=cax, orientation='horizontal')
-    cbar.set_label('Temperature ($^o$C)')
+    # colorbars
+    # l44, b44, w44, h44 = ax44.get_position().bounds
+    # l66, _, w66, h66 = ax66.get_position().bounds
+    # cax = fig.add_axes([l44, b44-0.1, l66 + w66 - l44, 0.02])
+    # cbar = plt.colorbar(c, cax=cax, orientation='horizontal')
+    # cbar.set_label('Temperature ($^o$C)')
+    # maps
+    l3, b3, w3, h3 = ax3.get_position().bounds
+    l6, b6, w6, h6 = ax6.get_position().bounds
+    cax3 = fig.add_axes([l3 + w3 + 0.02, b3, 0.02, h3])
+    cax6 = fig.add_axes([l6 + w6 + 0.02, b6, 0.02, h6])
+    cbar3 = plt.colorbar(c_map, cax=cax3, label='Temperature ($^o$C)')
+    cbar6 = plt.colorbar(c_map, cax=cax6, label='Temperature ($^o$C)')
+    
+    # transects
+    l33, b33, w33, h33 = ax33.get_position().bounds
+    l66, b66, w66, h66 = ax66.get_position().bounds
+    cax33 = fig.add_axes([l33 + w33 + 0.02, b33, 0.02, h33])
+    cax66 = fig.add_axes([l66 + w66 + 0.02, b66, 0.02, h66])
+    cbar33 = plt.colorbar(c_transect, cax=cax33)
+    cbar66 = plt.colorbar(c_transect, cax=cax66)
+    cbar33.set_ticks(np.arange(vmin_transect, vmax_transect + 1, 1))
+    cbar66.set_ticks(np.arange(vmin_transect, vmax_transect + 1, 1))
     
     # quiver
-    qkey = ax66.quiverkey(q, X=0.55, Y=-0.8, U=0.2, label='0.2 m s$^{-1}$', labelpos='E', transform=ax11.transAxes)
+    qkey = ax33.quiverkey(q, X=0.55, Y=-0.8, U=0.2, label='0.2 m s$^{-1}$', labelpos='E', transform=ax33.transAxes)
     
     if output_path is not None:
         plt.savefig(output_path, bbox_extra_artists=(qkey,), bbox_inches='tight', dpi=300)
@@ -1692,29 +1731,25 @@ def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, sho
     add_subtitle(ax5, '(e) DSWT event depths reached')
     
     # --- write overall stats to csv ---
-    def _get_overall_mean_std(parameter):
-        values = []
-        for i in range(len(years)):
-            values.append([getattr(d, parameter) for d in dswt_events.events[i]])
-
-        values_flat = []
-        for i in range(len(values)):
-            for j in range(len(values[i])):
-                values_flat.append(values[i][j])
-        values_flat = np.array(values_flat)
+    def _get_overall_stats(parameter):
+        values_flat = _extract_event_data(dswt_events, parameter)
 
         mean_value = np.nanmean(values_flat)
         std_value = np.nanstd(values_flat)
-        return mean_value, std_value
+        min_value = np.nanmin(values_flat)
+        max_value = np.nanmax(values_flat)
+        return mean_value, std_value, min_value, max_value
     
-    df = pd.DataFrame(data=np.empty((5, 3)), columns=['parameter', 'mean', 'std'])
+    df = pd.DataFrame(data=np.empty((5, 5)), columns=['parameter', 'mean', 'std', 'min', 'max'])
     df['parameter'] = ['events', 'duration', 'mean_vel', 'mean_thickness', 'mean_h']
     df.iloc[0, 1] = np.nanmean(dswt_events.n_events)
     df.iloc[0, 2] = np.nanstd(dswt_events.n_events)
-    df.iloc[1, 1], df.iloc[1, 2] = _get_overall_mean_std('duration')
-    df.iloc[2, 1], df.iloc[2, 2] = _get_overall_mean_std('mean_vel')
-    df.iloc[3, 1], df.iloc[3, 2] = _get_overall_mean_std('mean_thickness')
-    df.iloc[4, 1], df.iloc[4, 2] = _get_overall_mean_std('mean_h')
+    df.iloc[0, 3] = np.nanmin(dswt_events.n_events)
+    df.iloc[0, 4] = np.nanmax(dswt_events.n_events)
+    df.iloc[1, 1], df.iloc[1, 2], df.iloc[1, 3], df.iloc[1, 4] = _get_overall_stats('duration')
+    df.iloc[2, 1], df.iloc[2, 2], df.iloc[2, 3], df.iloc[2, 4] = _get_overall_stats('mean_vel')
+    df.iloc[3, 1], df.iloc[3, 2], df.iloc[3, 3], df.iloc[3, 4] = _get_overall_stats('mean_thickness')
+    df.iloc[4, 1], df.iloc[4, 2], df.iloc[4, 3], df.iloc[4, 4] = _get_overall_stats('mean_h')
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
@@ -2168,6 +2203,8 @@ if __name__ == '__main__':
     
     grid_ds = xr.load_dataset(grid_file)
     
+    config = read_config('cwa')
+    
     # ---------------------------------------------------
     # Introduction
     # ---------------------------------------------------
@@ -2182,7 +2219,20 @@ if __name__ == '__main__':
     # Methods
     # ---------------------------------------------------
     # glider versus model
+    glider_files = ["IMOS_ANFOG_BCEOPSTUV_20100507T030402Z_SL130_FV01_timeseries_END-20100515T133815Z.nc",
+                   "IMOS_ANFOG_BCEOPSTUV_20100628T045246Z_SL130_FV01_timeseries_END-20100714T233721Z.nc"]
+    glider_start_dates = [datetime(2010, 5, 12, 10, 0), datetime(2010, 7, 5, 14, 0)]
+    glider_end_dates = [datetime(2010, 5, 14, 0, 0), datetime(2010, 7, 8, 0, 0)]
+    flip = [True, False]
+    vmin1 = [24.8, 24.8]
+    vmax1 = [25.6, 25.6]
+    vmin2 = [20.0, 19.0]
+    vmax2 = [22.0, 21.0]
+    vmin3 = [35.4, 35.4]
+    vmax3 = [35.7, 35.6]
     
+    compare_glider_model_dswt(glider_files, glider_start_dates, glider_end_dates, config, flip, get_dir_from_json("glider_data"),
+                              get_dir_from_json("cwa"), grid_file, plot_dir, vmin1, vmax1, vmin2, vmax2, vmin3, vmax3, [False, False])
     
     # transects + performance
     plot_transects_and_performance(grid_ds, output_path=f'{plot_dir}transects_performance.jpg')
@@ -2201,8 +2251,8 @@ if __name__ == '__main__':
     df_dswt = read_df_from_multiple_csvs(input_dir_processed, years, 'dswt_timeseries_')
     df_transport = read_df_from_multiple_csvs(input_dir_processed, years, 'dswt_transport_')
     
-    dswt_events = DswtEvents.calculate_from_df_timeseries(df_dswt, years, req_months=[5, 6, 7])
-    dswt_events_2017 = DswtEvents.calculate_from_df_timeseries(df_dswt_2017, [2017], req_months=[5, 6, 7])
+    dswt_events = DswtEvents.calculate_from_df_timeseries(df_dswt, years)
+    dswt_events_2017 = DswtEvents.calculate_from_df_timeseries(df_dswt_2017, [2017])
     
     # --- WCS general cross-shelf transport ---
     plot_u_bar_overview(ucross_ds, output_path=f'{plot_dir}ubar_overview.jpg')
@@ -2217,8 +2267,8 @@ if __name__ == '__main__':
     plot_dswt_forcing(df_dswt, df_analysis, grid_ds, output_path=f'{plot_dir}dswt_forcing.jpg')
     plot_dswt_per_wind_dir(df_dswt, df_analysis, output_path=f'{plot_dir}dswt_wind_dir.jpg')
     
-    event_start = datetime(2017, 6, 17)
-    event_end = datetime(2017, 6, 22)
+    event_start = datetime(2017, 5, 12)
+    event_end = datetime(2017, 5, 17)
     plot_dswt_timeseries_evolution(df_dswt_2017, df_analysis_2017, highlight_dates=[event_start, event_end],
                                    output_path=f'{plot_dir}dswt_timeseries_evolution.jpg')
 
