@@ -14,7 +14,8 @@ from guis.transect_removal import convert_land_mask_to_polygons, map_with_land_a
 
 from tools import log
 from tools.files import get_dir_from_json, get_files_in_dir
-from tools.timeseries import get_monthly_means, get_monthly_climatology, get_yearly_means, get_l_months, get_l_time_range, get_time_indices, add_month_to_time, get_closest_time_index, get_monthly_sums
+from tools.timeseries import get_monthly_means, get_monthly_climatology, get_yearly_means, get_l_months, get_l_time_range, get_time_indices
+from tools.timeseries import add_month_to_time, get_closest_time_index, get_monthly_sums, convert_decimal_year_to_datetime
 from tools.velocity_shore_angles import get_cross_and_along_shelf_velocities
 from plot_tools.basic_timeseries import plot_histogram_multiple_years, plot_yearly_grid, plot_monthly_grid, plot_boxplots_multiple_years, plot_monthly_histogram, plot_multi_bar_monthly_histogram, plot_multi_bar_yearly_histogram
 from plot_tools.general import add_subtitle, color_y_axis, get_vmin_vmax
@@ -186,6 +187,28 @@ def read_analyses_from_multiple_csvs(input_dir:str, years:list) -> pd.DataFrame:
         df = pd.concat([df, df_y], ignore_index=True)
         
     return df
+
+def read_monthly_fremantle_msl(input_path=f'{get_dir_from_json("fmsl")}fremantle_msl_monthly.csv',
+                               time_range=[datetime(2000, 1, 1), datetime(2023, 12, 31)]) -> tuple[np.ndarray, np.ndarray]:
+    df = pd.read_csv(input_path)
+    time = df['date'].values
+    time = convert_decimal_year_to_datetime(time)
+    msl = df['msl'].values.astype(float)
+    msl[msl==-99999] = np.nan
+    l_time = get_l_time_range(time, time_range[0], time_range[1])
+    
+    return time[l_time], msl[l_time]
+
+def read_enso_index(input_path=get_dir_from_json('enso'), time_range=[datetime(2000, 1, 1), datetime(2023, 12, 31)]):
+    df = pd.read_csv(input_path)
+    index = df['RONI'].values
+    index[index == -99.99] = np.nan
+    year = df['YEAR'].values
+    month = df['MON'].values
+    time = np.array([datetime(year[i], month[i], 1) for i in range(len(year))])
+    l_time = get_l_time_range(time, time_range[0], time_range[1])
+    
+    return time[l_time], index[l_time]
 
 # ---------------------------------------------------
 # Plots
@@ -513,13 +536,13 @@ def plot_u_bar_overview(ucross_ds:xr.Dataset,
     _, ubar100, ubar100_std = get_monthly_means(ocean_time, np.nanmean(ucross_ds_contour100['u_bar'].values, axis=1))
     _, ubar200, ubar200_std = get_monthly_means(ocean_time, np.nanmean(ucross_ds_contour200['u_bar'].values, axis=1))
     
-    # ubar50_sv = np.nansum(ucross_ds_contour50['u_bar'].values * ucross_ds_contour50['dx'].values * ucross_ds_contour50['h'].values, axis=1) / 10**6
-    # ubar100_sv = np.nansum(ucross_ds_contour100['u_bar'].values * ucross_ds_contour100['dx'].values * ucross_ds_contour100['h'].values, axis=1) / 10**6
-    # ubar200_sv = np.nansum(ucross_ds_contour200['u_bar'].values * ucross_ds_contour200['dx'].values * ucross_ds_contour200['h'].values, axis=1) / 10**6
-    
-    # _, ubar50_sv_m, ubar50_sv_std = get_monthly_means(ocean_time, ubar50_sv)
-    # _, ubar100_sv_m, ubar100_sv_std = get_monthly_means(ocean_time, ubar100_sv)
-    # _, ubar200_sv_m, ubar200_sv_std = get_monthly_means(ocean_time, ubar200_sv)
+    # Sverdrup per 100 km:
+    contour_length50 = np.nansum(ucross_ds_contour50['dx'].values)
+    ubar50_sv_per100km = 100*10**3/contour_length50 * (ubar50 * contour_length50 * 50) / 10**6
+    contour_length100 = np.nansum(ucross_ds_contour100['dx'].values)
+    ubar100_sv_per100km = 100*10**3/contour_length100 * (ubar100 * contour_length100 * 100) / 10**6
+    contour_length200 = np.nansum(ucross_ds_contour200['dx'].values)
+    ubar200_sv_per100km = 100*10**3/contour_length200 * (ubar200 * contour_length200 * 200) / 10**6
     
     xlim = [ocean_time[0], ocean_time[-1]]
     ylim = [-0.1, 0.1]
@@ -615,6 +638,11 @@ def plot_u_bar_overview(ucross_ds:xr.Dataset,
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        
+        df = pd.DataFrame(data=np.array([time_m, ubar50_sv_per100km, ubar100_sv_per100km, ubar200_sv_per100km]).transpose(),
+                          columns=['time', 'ubar 50m (sv/100 km)', 'ubar 100m (sv/100 km)', 'ubar 200m (sv/100 km)'])
+        df.to_csv(f'{os.path.splitext(output_path)[0]}.csv', index=False)
+        
     if show == True:
         plt.show()
     else:
@@ -1033,6 +1061,11 @@ def plot_overall_transport_map_with_monthly_climatology(df_timeseries:pd.DataFra
     # save and show figure
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        
+        df = pd.DataFrame(data=np.array([time_m, dswt_transport_m/(24*60*60), dswt_transport_std/(24*60*60)]).transpose(),
+                          columns=['time', 'mean dswt (m2/s)', 'std dswt (m2/s)'])
+        df.to_csv(f'{os.path.splitext(output_path)[0]}.csv', index=False)
+        
     if show == True:
         plt.show()
     else:
@@ -1643,7 +1676,104 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     else:
         plt.close()
 
-# --- Supplemental ---
+def plot_interannual_dswt(df_timeseries:pd.DataFrame, df_analysis:pd.DataFrame, output_path=None, show=False):
+    years = np.arange(2000, 2024)
+    
+    df_analysis = convert_df_to_daily_means(df_analysis)
+    
+    time = np.array([pd.to_datetime(d) for d in df_timeseries['time'].values])
+    transport_climatology, transport_climatology_std = get_monthly_climatology(time, df_timeseries['transport_50m'].values)
+    
+    time_m, transport_m, transport_std = get_monthly_means(time, df_timeseries['transport_50m'].values)
+    transport_anomaly_m = transport_m - np.tile(transport_climatology, len(years))
+    
+    dsst = df_analysis['sst_sh'].values - df_analysis['sst_dp'].values
+    dsst_climatology, dsst_climatology_std = get_monthly_climatology(time, dsst)
+    _, dsst_m, _ = get_monthly_means(time, dsst)
+    dsst_anomaly_m = dsst_m - np.tile(dsst_climatology, len(years))
+    
+    time_enso, enso_index = read_enso_index()
+    time_fmsl, fmsl = read_monthly_fremantle_msl()
+    fmsl_climatology, _ = get_monthly_climatology(time_fmsl, fmsl)
+    fmsl_anomaly = fmsl - np.tile(fmsl_climatology, len(years)-1) # FMSL data only available until 2022
+    
+    fig = plt.figure(figsize=(8, 10))
+    
+    xlim = [datetime(2000, 1, 1), datetime(2023, 12, 31)]
+    
+    # enso index
+    ylim_enso = [-2.0, 3.0]
+    ax1 = plt.subplot(3, 1, 1)
+    plot_histogram_multiple_years(time_enso, enso_index,
+                                  ylabel='Relative Nino3.4',
+                                  ylim=ylim_enso,
+                                  color=[color_neg, color_pos], c_change=0.0,
+                                  ax=ax1, show=False)
+    ax1.plot(xlim, [0, 0], '-k')
+    ax1.fill_between(xlim, -0.8, 0.8, color='w', alpha=0.7)
+    ax1.text(datetime(2023, 7, 1), ylim_enso[1], 'EL NINO', rotation='vertical', va='top', ha='center', fontsize=10)
+    ax1.text(datetime(2023, 7, 1), ylim_enso[0], 'LA NINA', rotation='vertical', va='bottom', ha='center', fontsize=10)
+    plot_yearly_grid(ax1, years)
+    ax1.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+    ax1.tick_params(axis='x', labelrotation=90)
+    ax1.set_xlim(xlim)
+    add_subtitle(ax1, '(a) ENSO index')
+    
+    ax11 = ax1.twinx()
+    ax11.plot(time_fmsl, fmsl_anomaly, '-', color=color_neg, linewidth=0.5)
+    ax11.set_ylim([-200, 300])
+    ax11.set_ylabel('Fremantle mean sea level\n anomaly (mm)')
+    ax11.set_xlim(xlim)
+    color_y_axis(ax11, color_neg, 'right')
+    
+    # delta SST
+    ax2 = plt.subplot(3, 1, 2)
+    plot_histogram_multiple_years(time_m, dsst_m,
+                                  ylabel=r'$\Delta$ SST ($^o$C)',
+                                  ylim=[-6, 3],
+                                  color=[color_neg, color_pos], c_change=0.0,
+                                  ax=ax2, show=False)
+    ax2.plot(xlim, [0, 0], '-k')
+    plot_yearly_grid(ax2, years)
+    ax2.set_xticklabels([])
+    ax2.set_xlim(xlim)
+    add_subtitle(ax2, '(b) Inshore - offshore SST')
+    
+    ax22 = ax2.twinx()
+    ax22.plot(time_m, dsst_anomaly_m, '-k', linewidth=1)
+    ax22.set_ylim([-6, 3])
+    ax22.set_ylabel(r'$\Delta$SST anomaly ($^o$C)')
+    ax22.set_xlim(xlim)
+    
+    # DSWT transport
+    ax3 = plt.subplot(3, 1, 3)
+    plot_histogram_multiple_years(time_m, transport_m / (24*60*60),
+                                  ylabel='Transport (m$^2$s$^{-1}$)',
+                                  ylim=[-0.05, 0.12], color=color_transport,
+                                  ax=ax3, show=False)
+    ax3.plot(xlim, [0, 0], '-k')
+    plot_yearly_grid(ax3, years)
+    ax3.tick_params(axis='x', labelrotation=90)
+    ax3.set_xlim(xlim)
+    add_subtitle(ax3, '(c) DSWT transport')
+    
+    ax33 = ax3.twinx()
+    ax33.plot(time_m, transport_anomaly_m / (24*60*60), '-k', linewidth=1)
+    ax33.set_ylim([-0.05, 0.12])
+    ax33.set_ylabel('Transport anomaly (m$^2$s$^{-1}$)')
+    ax33.set_xlim(xlim)
+    
+    
+    # save and show figure
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
+
+# --- Supplemental / extra ---
 def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, show=False):
     
     xlim = [datetime(years[0], 1, 1), datetime(years[-1], 12, 31)]
@@ -2277,6 +2407,9 @@ if __name__ == '__main__':
     
     # --- WCS cross-shelf export comparison with DSWT ---
     plot_overall_export_comparison(ucross_ds, df_dswt_2017, df_analysis_2017, output_path=f'{plot_dir}dswt_export_contribution.jpg')
+    
+    # --- WCS interannual DSWT ---
+    plot_interannual_dswt(df_dswt, df_analysis, output_path=f'{plot_dir}dswt_interannual.jpg')
     
     # ---------------------------------------------------
     # SI
