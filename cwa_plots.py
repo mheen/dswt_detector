@@ -201,11 +201,9 @@ def read_monthly_fremantle_msl(input_path=f'{get_dir_from_json("fmsl")}fremantle
 
 def read_enso_index(input_path=get_dir_from_json('enso'), time_range=[datetime(2000, 1, 1), datetime(2023, 12, 31)]):
     df = pd.read_csv(input_path)
-    index = df['RONI'].values
-    index[index == -99.99] = np.nan
-    year = df['YEAR'].values
-    month = df['MON'].values
-    time = np.array([datetime(year[i], month[i], 1) for i in range(len(year))])
+    index = df['roni index'].values
+    index[index == -9999.] = np.nan
+    time = np.array([pd.to_datetime(t) for t in df['Date'].values])
     l_time = get_l_time_range(time, time_range[0], time_range[1])
     
     return time[l_time], index[l_time]
@@ -1174,7 +1172,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     h_dswt = np.nanmean(df_dswt.mean_h.values[l_dswt])
     y_grav = np.sqrt(G / RHO0 * abs(x) * dx * h_dswt)
     ax4.plot(x*10**5, y_grav, '-w', linewidth=2)
-    ax4.plot(x*10**5, y_grav, '-k', label='grav.')
+    ax4.plot(x*10**5, y_grav, '-k', label='$u_{grav}$')
     
     # geostrophic velocity estimate
     # u = 1/6 * h/f * g/rho0 * drho/dx
@@ -1182,7 +1180,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     h = 50
     y_geo = 1/6 * h/F * G/RHO0 * x
     ax4.plot(x*10**5, y_geo, '-w', linewidth=2)
-    ax4.plot(x*10**5, y_geo, '--k', label='geo.')
+    ax4.plot(x*10**5, y_geo, '--k', label='$u_{geo}$')
     
     # legend
     ax4.legend(loc='upper right')
@@ -1604,6 +1602,7 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
         plt.close()
 
 def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFrame, df_analysis:pd.DataFrame,
+                                   df_timeseries_all:pd.DataFrame, df_analysis_all:pd.DataFrame,
                                    output_path=None, show=False):
     
     # monthly DSWT transport
@@ -1642,18 +1641,36 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     l_pos_ub = ub > 0
     time_m_ub, ub_m, ub_std = get_monthly_means(time_analysis[l_pos_ub], ub[l_pos_ub])
     
+    # instantaneous us and ub per wind dir
+    l_southerly, l_northerly, l_onshore, l_offshore = _split_into_wind_dirs(df_analysis_all)
+    df_southerly = df_analysis_all.loc[l_southerly]
+    df_northerly = df_analysis_all.loc[l_northerly]
+    df_onshore = df_analysis_all.loc[l_onshore]
+    df_offshore = df_analysis_all.loc[l_offshore]
+    time_southerly = np.array([pd.to_datetime(d) for d in df_southerly['time'].values])
+    time_northerly = np.array([pd.to_datetime(d) for d in df_northerly['time'].values])
+    time_onshore = np.array([pd.to_datetime(d) for d in df_onshore['time'].values])
+    time_offshore = np.array([pd.to_datetime(d) for d in df_offshore['time'].values])
+    # instantaneous dswt per wind dir
+    dswt = np.repeat(df_timeseries_all['transport_50m'].values, 2) # to match twice daily df_analysis
+    dswt_southerly = dswt[l_southerly] / (24*60*60)
+    dswt_northerly = dswt[l_northerly] / (24*60*60)
+    dswt_onshore = dswt[l_onshore] / (24*60*60)
+    dswt_offshore = dswt[l_offshore] / (24*60*60)
+    
     # figure
+    color_winter = "#483f9932"
     xlim = [datetime(2017, 1, 1), datetime(2017, 12, 31)]
     time_m_str = [t.strftime('%b') for t in time_m]
     
     dswt_percentage = (dswt_transport_m/(24*60*60)) / ucross_m * 100
     dswt_percentage_b = (dswt_transport_m/(24*60*60)) / ub_m * 100
     
-    fig = plt.figure(figsize=(8, 5))
-    plt.rcParams['font.size'] = 14
+    fig = plt.figure(figsize=(12, 6))
+    plt.rcParams['font.size'] = 12
     
     # timeseries
-    ax = plt.axes()
+    ax = plt.subplot(2, 5, (1, 8))
     plot_multi_bar_monthly_histogram(time_m, [dswt_percentage_b, dswt_percentage], [color_neg, color_transport],
                                      ['Bottom', 'Overall'], ylim=[0, 45], legend_loc='lower right',
                                      ylabel='Offshore transport due to DSWT (%)',
@@ -1662,7 +1679,76 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     ax.set_xticks(time_m)
     ax.set_xticklabels(time_m_str)
     plot_monthly_grid(ax, 2017)
-    add_subtitle(ax, 'Percentage cross-shelf transport related to DSWT')
+    add_subtitle(ax, '(a) Percentage cross-shelf transport related to DSWT')
+    ax.axvspan(datetime(2017, 5, 1), datetime(2017, 7, 31), color=color_winter, zorder=0)
+    
+    # --- u versus wind ----
+    xlim_wv = [0, 15]
+    ylim_t = [-3.0, 3.0]
+    
+    # winter upwelling
+    ax5 = plt.subplot(2, 5, 4)
+    l_mjj_s = get_l_time_range(time_southerly, datetime(2017, 5, 1), datetime(2017, 7, 31))
+    ax5.scatter(df_southerly['wind_vel'].values[l_mjj_s], df_southerly['Uss'].values[l_mjj_s], marker='x', s=20, color=color_pos, label='U$_s$')
+    ax5.scatter(df_southerly['wind_vel'].values[l_mjj_s], df_southerly['Tes'].values[l_mjj_s], marker='x', s=20, color='#9B9B9B', label='U$_{E, s}$')
+    ax5.scatter(df_southerly['wind_vel'].values[l_mjj_s], df_southerly['Usb'].values[l_mjj_s], marker='o', s=20, color=color_neg, label='_nolegend_')
+    ax5.scatter(df_southerly['wind_vel'].values[l_mjj_s], dswt_southerly[l_mjj_s], marker='o', s=20, color=color_transport, label='_nolegend_')
+    ax5.plot(xlim_wv, [0, 0], '-k')
+    ax5.set_xlim(xlim_wv)
+    ax5.set_ylim(ylim_t)
+    ax5.set_ylabel('Transport (m$^2$ s$^{-1}$)')
+    ax5.set_xticklabels([])
+    add_subtitle(ax5, '(b) Upwelling')
+    ax5.set_facecolor(color_winter)
+    ax5.legend(loc='lower left')
+    
+    # winter downwelling
+    ax6 = plt.subplot(2, 5, 5)
+    l_mjj_n = get_l_time_range(time_northerly, datetime(2017, 5, 1), datetime(2017, 7, 31))
+    ax6.scatter(df_northerly['wind_vel'].values[l_mjj_n], df_northerly['Uss'].values[l_mjj_n], marker='x', s=20, color=color_pos, label='U$_s$')
+    ax6.scatter(df_northerly['wind_vel'].values[l_mjj_n], df_northerly['Tes'].values[l_mjj_n], marker='x', s=20, color='#9B9B9B', label='U$_{E, s}$')
+    ax6.scatter(df_northerly['wind_vel'].values[l_mjj_n], df_northerly['Usb'].values[l_mjj_n], marker='o', s=20, color=color_neg, label='U$_b$')
+    ax6.scatter(df_northerly['wind_vel'].values[l_mjj_n], dswt_northerly[l_mjj_n], marker='o', s=20, color=color_transport, label='U$_{DSWT}$')
+    ax6.plot(xlim_wv, [0, 0], '-k')
+    ax6.set_xlim(xlim_wv)
+    ax6.set_ylim(ylim_t)
+    ax6.set_yticklabels([])
+    ax6.set_xticklabels([])
+    add_subtitle(ax6, '(c) Downwelling')
+    ax6.set_facecolor(color_winter)
+    
+    # winter onshore
+    ax7 = plt.subplot(2, 5, 9)
+    l_mjj_on = get_l_time_range(time_onshore, datetime(2017, 5, 1), datetime(2017, 7, 31))
+    ax7.scatter(df_onshore['wind_vel'].values[l_mjj_on], df_onshore['Uss'].values[l_mjj_on], marker='x', s=20, color=color_pos, label='U$_s$')
+    ax7.scatter(df_onshore['wind_vel'].values[l_mjj_on], df_onshore['Usb'].values[l_mjj_on], marker='o', s=20, color=color_neg, label='U$_b$')
+    ax7.scatter(df_onshore['wind_vel'].values[l_mjj_on], dswt_onshore[l_mjj_on], marker='o', s=20, color=color_transport, label='U$_{DSWT}$')
+    ax7.plot(xlim_wv, [0, 0], '-k')
+    ax7.set_xlim(xlim_wv)
+    ax7.set_ylim(ylim_t)
+    ax7.set_ylabel('Transport (m$^2$ s$^{-1}$)')
+    ax7.set_xlabel('Wind speed (m s$^{-1}$)')
+    add_subtitle(ax7, '(d) Onshore')
+    ax7.set_facecolor(color_winter)
+    
+    # winter offshore
+    ax8 = plt.subplot(2, 5, 10)
+    l_mjj_off = get_l_time_range(time_offshore, datetime(2017, 5, 1), datetime(2017, 7, 31))
+    ax8.scatter(df_offshore['wind_vel'].values[l_mjj_off], df_offshore['Uss'].values[l_mjj_off], marker='x', s=20, color=color_pos, label='_nolegend_')
+    ax8.scatter(df_offshore['wind_vel'].values[l_mjj_off], df_offshore['Usb'].values[l_mjj_off], marker='o', s=20, color=color_neg, label='U$_b$')
+    ax8.scatter(df_offshore['wind_vel'].values[l_mjj_off], dswt_offshore[l_mjj_off], marker='o', s=20, color=color_transport, label='U$_{DSWT}$')
+    ax8.plot(xlim_wv, [0, 0], '-k')
+    ax8.set_xlim(xlim_wv)
+    ax8.set_ylim(ylim_t)
+    ax8.set_yticklabels([])
+    ax8.set_xlabel('Wind speed (m s$^{-1}$)')
+    add_subtitle(ax8, '(e) Offshore')
+    ax8.set_facecolor(color_winter)
+    ax8.legend(loc='lower right')
+    
+    # move ax a bit
+    l, b, w, h = ax.get_position().bounds
+    ax.set_position([l-0.04, b, w, h])
     
     # save and show figure
     if output_path is not None:
@@ -1697,7 +1783,8 @@ def plot_interannual_dswt(df_timeseries:pd.DataFrame, df_analysis:pd.DataFrame, 
     fmsl_climatology, _ = get_monthly_climatology(time_fmsl, fmsl)
     fmsl_anomaly = fmsl - np.tile(fmsl_climatology, len(years)-1) # FMSL data only available until 2022
     
-    fig = plt.figure(figsize=(8, 10))
+    fig = plt.figure(figsize=(8, 9))
+    plt.subplots_adjust(hspace=0.1)
     
     xlim = [datetime(2000, 1, 1), datetime(2023, 12, 31)]
     
@@ -1744,6 +1831,20 @@ def plot_interannual_dswt(df_timeseries:pd.DataFrame, df_analysis:pd.DataFrame, 
     ax22.set_ylim([-6, 3])
     ax22.set_ylabel(r'$\Delta$SST anomaly ($^o$C)')
     ax22.set_xlim(xlim)
+    
+    # map inset panel b
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    ax222 = fig.add_axes([l2+0.03*w2, b2+0.007, 0.12*w2, 0.25*h2], projection=ccrs.PlateCarree())
+    plot_basic_map(ax222, lon_range_default, lat_range_default)
+    deep_shallow = np.empty(grid_ds.h.shape)*np.nan
+    l_shallow = grid_ds.h <= 20.
+    l_deep = np.logical_and(grid_ds.h >= 50, grid_ds.h <= 300)
+    deep_shallow[l_shallow] = 0
+    deep_shallow[l_deep] = 1
+    
+    cmap = ListedColormap(['#9794be', '#d7789d'])
+    ax222.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, deep_shallow, vmin=0, vmax=1, cmap=cmap, zorder=1)
+    ax222.patch.set_alpha(0.5)
     
     # DSWT transport
     ax3 = plt.subplot(3, 1, 3)
@@ -2406,7 +2507,7 @@ if __name__ == '__main__':
                     df_analysis_2017, output_path=f'{plot_dir}dswt_event_example.jpg')
     
     # --- WCS cross-shelf export comparison with DSWT ---
-    plot_overall_export_comparison(ucross_ds, df_dswt_2017, df_analysis_2017, output_path=f'{plot_dir}dswt_export_contribution.jpg')
+    plot_overall_export_comparison(ucross_ds, df_dswt_2017, df_analysis_2017, df_dswt, df_analysis, output_path=f'{plot_dir}dswt_export_contribution.jpg')
     
     # --- WCS interannual DSWT ---
     plot_interannual_dswt(df_dswt, df_analysis, output_path=f'{plot_dir}dswt_interannual.jpg')
