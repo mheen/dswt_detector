@@ -373,16 +373,22 @@ def plot_transects_and_performance(grid_ds:xr.Dataset, output_path=None, show=Fa
     n_correct_no_dswt = np.sum(l_correct_no_dswt)
     n_incorrect_no_dswt = np.sum(l_no_dswt) - n_correct_no_dswt
     transport_incorrect_no_dswt = df['transport'].values[l_no_dswt][~l_correct_no_dswt]
+    p_correct_no_dswt = n_correct_no_dswt / np.sum(l_no_dswt) * 100
+    p_incorrect_no_dswt = n_incorrect_no_dswt / np.sum(l_no_dswt) * 100
     
     l_correct_dswt = algorithm_dswt[l_dswt] == 1
     n_correct_dswt = np.sum(l_correct_dswt)
     n_incorrect_dswt = np.sum(l_dswt) - n_correct_dswt
     transport_correct_dswt = df['transport'].values[l_dswt][l_correct_dswt]
+    p_correct_dswt = n_correct_dswt / np.sum(l_dswt) * 100
+    p_incorrect_dswt = n_incorrect_dswt / np.sum(l_dswt) * 100
     
     l_uncertain_no_dswt = algorithm_dswt[l_uncertain] == 0
     l_uncertain_dswt = algorithm_dswt[l_uncertain] == 1
     transport_uncertain = df['transport'].values[l_uncertain]
     transport_uncertain = transport_uncertain[~np.isnan(transport_uncertain)]
+    p_uncertain_dswt = np.sum(l_uncertain_dswt) / np.sum(l_uncertain) * 100
+    p_uncertain_no_dswt = np.sum(l_uncertain_no_dswt) / np.sum(l_uncertain) * 100
     
     time_m, counts_m, transport_correct_m, transport_incorrect_m, transport_uncertain_m = _get_monthly_performance_data(df)
     
@@ -440,12 +446,6 @@ def plot_transects_and_performance(grid_ds:xr.Dataset, output_path=None, show=Fa
                 linestyle="none", color='k', mec='k', mew=1, clip_on=False)
     ax22.plot([0, 1], [0, 0], transform=ax22.transAxes, **kwargs)
     ax2.plot([0, 1], [1, 1], transform=ax2.transAxes, **kwargs)
-    
-    # ax22 = ax2.twinx()
-    # ax22.set_ylim([0, ylim2/len(manual_dswt) * 100])
-    # yticks = ax2.get_yticks()
-    # ax22.set_yticks(yticks/len(manual_dswt) * 100)
-    # ax22.set_ylabel('Tests (%)')
     
     ax22.legend(loc='upper right', bbox_to_anchor=(1.0, 0.8))
     
@@ -513,6 +513,13 @@ def plot_transects_and_performance(grid_ds:xr.Dataset, output_path=None, show=Fa
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        
+        df = pd.DataFrame(data=np.array([['Algorithm DSWT', 'Algorithm no DSWT'],
+                                         [p_incorrect_no_dswt, p_correct_no_dswt],
+                                         [p_correct_dswt, p_incorrect_dswt],
+                                         [p_uncertain_dswt, p_uncertain_no_dswt]]).transpose(),
+                          columns=['Algorithm', 'Manual no DSWT (%)', 'Manual DSWT (%)', 'Manual uncertain (%)'])
+        df.to_csv(f'{os.path.splitext(output_path)[0]}.csv', index=False)
     if show == True:
         plt.show()
     else:
