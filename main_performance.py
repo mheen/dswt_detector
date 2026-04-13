@@ -34,7 +34,7 @@ n_files_to_check = 10
 n_times_to_check = 2
 n_transects_per_file_to_check = 5
 
-focus_months = [5, 6] # set to None for full year,
+focus_months = [5, 6, 7] # set to None for full year,
 # allowing this option to focus more on DSWT times
 # rather than confirming obvious false values
 

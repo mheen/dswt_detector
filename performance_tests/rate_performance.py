@@ -222,29 +222,33 @@ def recheck_differences(input_dir:str, grid_file:str, transects:dict,
     df_diff = df.loc[l_comparison == False]
     
     changes = 0
-    for i in range(len(df_diff)):
-        filename = df_diff["filename"].values[i]
+    for filename in np.unique(df_diff['filename'].values):
         input_path = f'{input_dir}{filename}.nc'
-        time_str = str(df_diff['time'].values[i])
-        transect_name = df_diff['transect'].values[i]
-
         roms_ds = load_roms_data(input_path, grid_file=grid_file)
         roms_times = pd.to_datetime(roms_ds.ocean_time.values)
-        time = datetime.strptime(time_str, '%Y%m%d%H%M')
-        t = np.where(roms_times == time)[0][0]
         
-        eta = transects[transect_name]['eta']
-        xi = transects[transect_name]['xi']
-        transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
-        transects_plot(transect_ds, t)
-        plt.show()
+        l_file = df_diff['filename'].values == filename
+        df_diff_file = df_diff.loc[l_file]
         
-        manual_input = input('DSWT 0=False, 1=True, 0.5=Unsure: ')
-        if manual_input != df_diff['manual_dswt'].values[i]:
-            l_row = np.logical_and(df['filename'] == filename, df['transect'] == transect_name)
-            l_col = df.columns == 'manual_dswt'
-            df.loc[l_row, l_col] = manual_input
-            changes += 1
+        for i in range(len(df_diff_file)):
+            time_str = str(df_diff_file['time'].values[i])
+            transect_name = df_diff_file['transect'].values[i]
+
+            time = datetime.strptime(time_str, '%Y%m%d%H%M')
+            t = np.where(roms_times == time)[0][0]
+            
+            eta = transects[transect_name]['eta']
+            xi = transects[transect_name]['xi']
+            transect_ds = select_roms_transect_from_known_coordinates(roms_ds, eta, xi)
+            transects_plot(transect_ds, t)
+            plt.show()
+            
+            manual_input = input('DSWT 0=False, 1=True, 0.5=Possible: ')
+            if manual_input != df_diff_file['manual_dswt'].values[i]:
+                l_row = np.logical_and(df['filename'] == filename, df['transect'] == transect_name)
+                l_col = df.columns == 'manual_dswt'
+                df.loc[l_row, l_col] = manual_input
+                changes += 1
             
     # write performance comparison to file again if any changes
     if changes > 0:
@@ -253,7 +257,7 @@ def recheck_differences(input_dir:str, grid_file:str, transects:dict,
         log.info(f'Performance not changed after manual checks of differences')
         
 if __name__ == '__main__':
-    recheck = False
+    recheck = True
 
     year = 2017
     model = 'cwa'
@@ -267,6 +271,9 @@ if __name__ == '__main__':
 
     performance_file = f'performance_tests/output/{model}/{model}_{year}_performance_comparison.csv'
     df = pd.read_csv(performance_file)
+    
+    if recheck == True:
+        recheck_differences(input_dir, grid_file, transects, df)
     
     plot_performance_summary(df, output_path=f'performance_tests/output/{model}/{model}_performance_summary.jpg')
     
