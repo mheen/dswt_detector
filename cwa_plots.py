@@ -31,6 +31,7 @@ from matplotlib.offsetbox import AnchoredText
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 import matplotlib.patheffects as pe
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import cartopy.crs as ccrs
 import cmocean as cm
 import numpy as np
@@ -415,9 +416,30 @@ def plot_transects_and_performance(grid_ds:xr.Dataset, output_path=None, show=Fa
     ax2.set_xticklabels(['No DSWT', 'DSWT', 'Possible'])
     ax2.set_xlabel('Manual determination')
     
-    ylim2 = np.ceil(max([np.sum(l_no_dswt), np.sum(l_dswt), np.sum(l_uncertain)])) * 1.2
-    ax2.set_ylim([0, ylim2])
+    ax2.set_ylim([0, 200])
     ax2.set_ylabel('Tests (#)')
+    
+    # split y-axis
+    ax2.spines['top'].set_visible(False)
+    divider = make_axes_locatable(ax2)
+    ax22 = divider.new_vertical(size="50%", pad=0.2)
+    fig.add_axes(ax22)
+    ax22.bar([1], [n_correct_no_dswt], color='#900C3F', label='Algorithm: no DSWT')
+    ax22.bar([1], [n_incorrect_no_dswt], bottom=[n_correct_no_dswt], color='#25419e', label='Algorithm: DSWT')
+    ax22.bar([2], [0])
+    ax22.bar([3], [0])
+    
+    # ylim2 = np.ceil(max([np.sum(l_no_dswt), np.sum(l_dswt), np.sum(l_uncertain)])) * 1.2
+    ylim2 = 900
+    ax22.set_ylim([600, ylim2])
+    ax22.tick_params(bottom=False, labelbottom=False)
+    ax22.spines['bottom'].set_visible(False)
+    
+    d = .3  # proportion of vertical to horizontal extent of the slanted line
+    kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12,
+                linestyle="none", color='k', mec='k', mew=1, clip_on=False)
+    ax22.plot([0, 1], [0, 0], transform=ax22.transAxes, **kwargs)
+    ax2.plot([0, 1], [1, 1], transform=ax2.transAxes, **kwargs)
     
     # ax22 = ax2.twinx()
     # ax22.set_ylim([0, ylim2/len(manual_dswt) * 100])
@@ -425,23 +447,20 @@ def plot_transects_and_performance(grid_ds:xr.Dataset, output_path=None, show=Fa
     # ax22.set_yticks(yticks/len(manual_dswt) * 100)
     # ax22.set_ylabel('Tests (%)')
     
-    ax2.legend(loc='upper right', bbox_to_anchor=(1.0, 0.94))
+    ax22.legend(loc='upper right', bbox_to_anchor=(1.0, 0.8))
     
-    add_subtitle(ax2, '(b) Performance test outcomes')
+    add_subtitle(ax22, '(b) Performance test outcomes')
     
     # effect on transport
     y_scale = 10**4
-    mean_transport = np.array([np.nanmean(transport_incorrect_no_dswt) / y_scale, np.nanmean(transport_correct_dswt) / y_scale, np.nanmean(transport_uncertain) / y_scale])
-    std_transport = np.array([np.nanstd(transport_incorrect_no_dswt) / y_scale, np.nanstd(transport_correct_dswt) / y_scale, np.nanstd(transport_uncertain) / y_scale])
+    sum_transport = np.array([np.nansum(transport_incorrect_no_dswt) / y_scale, np.nansum(transport_correct_dswt) / y_scale, np.nansum(transport_uncertain) / y_scale])
     ax3 = plt.subplot(2, 3, 3)
-    ax3.bar([0, 1, 2], mean_transport,
-            yerr=std_transport,
-            color=color_transport, ecolor=color_transport_std)
+    ax3.bar([0, 1, 2], sum_transport, color=color_transport)
     ax3.set_xticks([0, 1, 2])
     ax3.set_xticklabels(['No DSWT', 'DSWT', 'Possible'])
     ax3.set_xlabel('Manual determination')
     ax3.set_ylabel('Transport (10$^4$ m$^2$ s$^{-1}$)')
-    ylim3 = np.ceil(max(mean_transport) + max(std_transport)) * 1.2
+    ylim3 = np.ceil(max(sum_transport)) * 1.2
     ax3.set_ylim([0, ylim3])
     add_subtitle(ax3, '(d) Effect on transport')
     
@@ -475,11 +494,12 @@ def plot_transects_and_performance(grid_ds:xr.Dataset, output_path=None, show=Fa
     ax5.set_xticklabels(str_time)
     ax5.set_ylabel('Monthly transport (10$^4$ m$^2$ s$^{-1}$)')
     
-    ylim5 = np.ceil(max(transport_correct_m + transport_incorrect_m + transport_uncertain_m) / y_scale / 50) * 50
+    # ylim5 = np.ceil(max(transport_correct_m + transport_incorrect_m + transport_uncertain_m) / y_scale / 50) * 50
+    ylim5 = 52
     ax5.set_ylim([0, ylim5])
     ax5.set_xlim([datetime(2017, 1, 1), datetime(2017, 12, 31)])
     
-    ax5.legend(loc='upper right', bbox_to_anchor=(1.0, 0.94))
+    ax5.legend(loc='upper left', bbox_to_anchor=(0.01, 0.94))
     
     add_subtitle(ax5, '(e) Monthly effect on transport')
     
@@ -767,8 +787,8 @@ def plot_us_ub_dynamics(df_analysis:pd.DataFrame, output_path=None, show=False):
     ax1.axvspan(datetime(2017, 12, 1), datetime(2017, 12, 31), color=color_summer,zorder=0)
     ax1.axvspan(datetime(2017, 5, 1), datetime(2017, 7, 31), color=color_winter, zorder=0)
     
-    ax1.text(1.01, 0.2, 'offshore', rotation=90, va='center', transform=ax1.transAxes)
-    ax1.text(1.01, 0.7, 'onshore', rotation=90, va='center', transform=ax1.transAxes)
+    ax1.text(1.01, 0.2, 'onshore', rotation=90, va='center', transform=ax1.transAxes)
+    ax1.text(1.01, 0.7, 'offshore', rotation=90, va='center', transform=ax1.transAxes)
 
     # monthly bottom timeseries
     ax2 = plt.subplot(3, 5, (6, 8))
@@ -784,11 +804,11 @@ def plot_us_ub_dynamics(df_analysis:pd.DataFrame, output_path=None, show=False):
     ax2.axvspan(datetime(2017, 12, 1), datetime(2017, 12, 31), color=color_summer, zorder=0)
     ax2.axvspan(datetime(2017, 5, 1), datetime(2017, 7, 31), color=color_winter, zorder=0)
     
-    ax2.text(1.01, 0.25, 'offshore', rotation=90, va='center', transform=ax2.transAxes)
-    ax2.text(1.01, 0.75, 'onshore', rotation=90, va='center', transform=ax2.transAxes)
+    ax2.text(1.01, 0.25, 'onshore', rotation=90, va='center', transform=ax2.transAxes)
+    ax2.text(1.01, 0.75, 'offshore', rotation=90, va='center', transform=ax2.transAxes)
     
     # --- u versus wind ----
-    xlim_wv = [0, 15]
+    xlim_wv = [5, 15]
     ylim_t = [-3.0, 3.0]
     
     # summer upwelling favorable (southerly)
@@ -930,7 +950,7 @@ def plot_us_ue_comparison(df_analysis:pd.DataFrame, output_path=None, show=False
         ax.set_ylim(ylim)
         ax.set_ylabel('$U_{s}$ / $U_{E,s}$')
     
-    fig = plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 5))
     plt.subplots_adjust(wspace=0.3)
     ax1 = plt.subplot(1, 2, 1)
     _plot_northerly_southerly(ax1, df_summer)
@@ -1107,7 +1127,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     add_subtitle(ax1, r'(a) Buoyancy vs $\frac{\partial\rho}{\partial x}$')
     r1, p1 = stats.pearsonr(bhflux, drhodx)
     t1 = ax1.text(-4, -0.25, f'  $R$={np.round(r1, 2)}, $p$<0.05', va='top')#, path_effects=[pe.withStroke(linewidth=2, foreground="w")])
-    t1.set_bbox(dict(facecolor='w', alpha=0.5, edgecolor='none'))
+    t1.set_bbox(dict(facecolor='w', alpha=0.8, edgecolor='none'))
     
     ax2 = plt.subplot(2, 2, 2)
     # ax2.scatter(df_analysis['sst_sh'].values - df_analysis['sst_dp'].values, df_dswt['drhodx'].values * 10**5, marker='x', s=20, c=color_neg)
@@ -1122,7 +1142,7 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     add_subtitle(ax2, r'(b) SST difference vs $\frac{\partial\rho}{\partial x}$')
     r2, p2 = stats.pearsonr(dsst, drhodx)
     t2 = ax2.text(-6, -0.25, f'  $R$={np.round(r2, 2)}, $p$<0.05', va='top')#, path_effects=[pe.withStroke(linewidth=2, foreground="w")])
-    t2.set_bbox(dict(facecolor='w', alpha=0.5, edgecolor='none'))
+    t2.set_bbox(dict(facecolor='w', alpha=0.8, edgecolor='none'))
     
     ax3 = plt.subplot(2, 2, 3)
     # ax3.scatter(df_dswt['drhodx'].values * 10**5, df_dswt['transport_50m'].values / (24*60*60), marker='x', s=20, c=color_neg)
@@ -1171,16 +1191,16 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     # h_dswt = np.nanmean(df_dswt.thickness.values[l_dswt])
     h_dswt = np.nanmean(df_dswt.mean_h.values[l_dswt])
     y_grav = np.sqrt(G / RHO0 * abs(x) * dx * h_dswt)
-    ax4.plot(x*10**5, y_grav, '-w', linewidth=2)
-    ax4.plot(x*10**5, y_grav, '-k', label='$u_{grav}$')
+    ax4.plot(x*10**5, y_grav, '-w', linewidth=4)
+    ax4.plot(x*10**5, y_grav, '-k', linewidth=2, label='$u_{grav}$')
     
     # geostrophic velocity estimate
     # u = 1/6 * h/f * g/rho0 * drho/dx
     # from Gawarkiewicz & Chapman (1995)
     h = 50
     y_geo = 1/6 * h/F * G/RHO0 * x
-    ax4.plot(x*10**5, y_geo, '-w', linewidth=2)
-    ax4.plot(x*10**5, y_geo, '--k', label='$u_{geo}$')
+    ax4.plot(x*10**5, y_geo, '-w', linewidth=4)
+    ax4.plot(x*10**5, y_geo, '--k', linewidth=2, label='$u_{geo}$')
     
     # legend
     ax4.legend(loc='upper right')
@@ -1683,8 +1703,8 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     ax.axvspan(datetime(2017, 5, 1), datetime(2017, 7, 31), color=color_winter, zorder=0)
     
     # --- u versus wind ----
-    xlim_wv = [0, 15]
-    ylim_t = [-3.0, 3.0]
+    xlim_wv = [5, 15]
+    ylim_t = [-3.0, 2.0]
     
     # winter upwelling
     ax5 = plt.subplot(2, 5, 4)
