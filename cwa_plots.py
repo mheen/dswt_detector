@@ -1629,12 +1629,11 @@ def plot_dswt_event(df_transport:pd.DataFrame, dates:list[datetime],
         plt.close()
 
 def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFrame, df_analysis:pd.DataFrame,
-                                   df_timeseries_all:pd.DataFrame, df_analysis_all:pd.DataFrame,
-                                   output_path=None, show=False):
+                                   depth_contour=50, output_path=None, show=False):
     
     # monthly DSWT transport
     time = np.array([pd.to_datetime(d) for d in df_timeseries['time'].values])
-    time_m, dswt_transport_m , dswt_transport_std = get_monthly_means(time, df_timeseries['transport_50m'].values)
+    time_m, dswt_transport_m , dswt_transport_std = get_monthly_means(time, df_timeseries[f'transport_{int(depth_contour)}m'].values)
     
     # monthly overall positive cross-shelf transport
     lon_range = [114.0, 116.0]
@@ -1650,36 +1649,36 @@ def plot_overall_export_comparison(ucross_ds:xr.Dataset, df_timeseries:pd.DataFr
     
     ocean_time = np.array([pd.to_datetime(d) for d in ucross_ds['ocean_time'].values])
     
-    lon_contour50, lat_contour50, contour_length = get_roms_contour_coordinates(grid_ds, lon_range, lat_range, 50)
-    ucross_ds_contour50 = get_roms_ds_along_contour(ucross_ds, grid_ds, lon_contour50, lat_contour50)
-    ucross = ucross_ds_contour50['u_cross'].values
+    lon_contour, lat_contour, contour_length = get_roms_contour_coordinates(grid_ds, lon_range, lat_range, depth_contour)
+    ucross_ds_contour = get_roms_ds_along_contour(ucross_ds, grid_ds, lon_contour, lat_contour)
+    ucross = ucross_ds_contour['u_cross'].values
     ucross[ucross <= 0] = np.nan
     ucross_overall = np.nansum(
         np.nansum(
-            ucross * ucross_ds_contour50['delta_z'].values, axis=1) * ucross_ds_contour50['dx'].values,
+            ucross * ucross_ds_contour['delta_z'].values, axis=1) * ucross_ds_contour['dx'].values,
         axis=1) / contour_length
     
     time_m, ucross_m, ucross_std = get_monthly_means(ocean_time, ucross_overall)
     
     # monthly positive cross-shelf transport at bottom
-    df_analysis = convert_df_to_daily_means(df_analysis)
-    ub = df_analysis['Usb'].values
-    time_analysis = np.array([pd.to_datetime(t) for t in df_analysis['time'].values])
+    df_analysis_daily = convert_df_to_daily_means(df_analysis)
+    ub = df_analysis_daily['Usb'].values
+    time_analysis_daily = np.array([pd.to_datetime(t) for t in df_analysis_daily['time'].values])
     l_pos_ub = ub > 0
-    time_m_ub, ub_m, ub_std = get_monthly_means(time_analysis[l_pos_ub], ub[l_pos_ub])
+    time_m_ub, ub_m, ub_std = get_monthly_means(time_analysis_daily[l_pos_ub], ub[l_pos_ub])
     
     # instantaneous us and ub per wind dir
-    l_southerly, l_northerly, l_onshore, l_offshore = _split_into_wind_dirs(df_analysis_all)
-    df_southerly = df_analysis_all.loc[l_southerly]
-    df_northerly = df_analysis_all.loc[l_northerly]
-    df_onshore = df_analysis_all.loc[l_onshore]
-    df_offshore = df_analysis_all.loc[l_offshore]
+    l_southerly, l_northerly, l_onshore, l_offshore = _split_into_wind_dirs(df_analysis)
+    df_southerly = df_analysis.loc[l_southerly]
+    df_northerly = df_analysis.loc[l_northerly]
+    df_onshore = df_analysis.loc[l_onshore]
+    df_offshore = df_analysis.loc[l_offshore]
     time_southerly = np.array([pd.to_datetime(d) for d in df_southerly['time'].values])
     time_northerly = np.array([pd.to_datetime(d) for d in df_northerly['time'].values])
     time_onshore = np.array([pd.to_datetime(d) for d in df_onshore['time'].values])
     time_offshore = np.array([pd.to_datetime(d) for d in df_offshore['time'].values])
     # instantaneous dswt per wind dir
-    dswt = np.repeat(df_timeseries_all['transport_50m'].values, 2) # to match twice daily df_analysis
+    dswt = np.repeat(df_timeseries[f'transport_{int(depth_contour)}m'].values, 2) # to match twice daily df_analysis
     dswt_southerly = dswt[l_southerly] / (24*60*60)
     dswt_northerly = dswt[l_northerly] / (24*60*60)
     dswt_onshore = dswt[l_onshore] / (24*60*60)
@@ -2534,7 +2533,7 @@ if __name__ == '__main__':
                     df_analysis_2017, output_path=f'{plot_dir}dswt_event_example.jpg')
     
     # --- WCS cross-shelf export comparison with DSWT ---
-    plot_overall_export_comparison(ucross_ds, df_dswt_2017, df_analysis_2017, df_dswt, df_analysis, output_path=f'{plot_dir}dswt_export_contribution.jpg')
+    plot_overall_export_comparison(ucross_ds, df_dswt_2017, df_analysis_2017, depth_contour=50, output_path=f'{plot_dir}dswt_export_contribution.jpg')
     
     # --- WCS interannual DSWT ---
     plot_interannual_dswt(df_dswt, df_analysis, output_path=f'{plot_dir}dswt_interannual.jpg')

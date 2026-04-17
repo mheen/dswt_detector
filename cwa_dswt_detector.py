@@ -51,7 +51,7 @@ interpolator = LinearNDInterpolator
 # One shows a timeseries of monthly mean DSWT occurrence and transport across a depth contour
 # The other shows a map of the overall mean cross-shelf transport
 # Specify the depth contour for the timeseries and the output folder to save plots to here
-depth_contour = 50.0
+depth_contours = [40.0, 50.0]
 plot_dir = f"{get_dir_from_json('plots', json_file='input/example_dirs.json')}{model}/"
 create_dir_if_does_not_exist(plot_dir)
 
@@ -228,15 +228,16 @@ for year in years:
         # occurrence timeseries
         df_timeseries = get_dswt_daily_timeseries_df(output_dir, [year])
         # transport timeseries
-        time, transport_contour, vel_contour, thickness_contour = get_daily_transport_across_contour_df(df_transport,
-                                                                                                        grid_ds,
-                                                                                                        lon_range,
-                                                                                                        lat_range,
-                                                                                                        depth_contour,
-                                                                                                        dx_method='roms')
-        df_timeseries[f'transport_{int(depth_contour)}m'] = transport_contour
-        df_timeseries[f'vel_{int(depth_contour)}m'] = vel_contour
-        df_timeseries[f'thickness_{int(depth_contour)}m'] = thickness_contour
+        for depth_contour in depth_contours:
+            time, transport_contour, vel_contour, thickness_contour = get_daily_transport_across_contour_df(df_transport,
+                                                                                                            grid_ds,
+                                                                                                            lon_range,
+                                                                                                            lat_range,
+                                                                                                            depth_contour,
+                                                                                                            dx_method='roms')
+            df_timeseries[f'transport_{int(depth_contour)}m'] = transport_contour
+            df_timeseries[f'vel_{int(depth_contour)}m'] = vel_contour
+            df_timeseries[f'thickness_{int(depth_contour)}m'] = thickness_contour
         log.info(f'Writing processed DSWT timeseries to csv: {output_timeseries}')
         df_timeseries.to_csv(output_timeseries, index=False)
 
