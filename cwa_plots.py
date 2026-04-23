@@ -114,6 +114,15 @@ def convert_df_to_daily_means(df_analysis:pd.DataFrame):
     
     return df_daily
 
+def _get_contour_length(grid_ds:xr.Dataset, depth_contour=50):
+    lon_range = [114.0, 116.0]
+    lat_range = [-33.0, -31.0]
+    lon_contour, lat_contour, _ = get_roms_contour_coordinates(grid_ds, lon_range, lat_range, 50)
+    grid_ds_contour = get_roms_ds_along_contour(grid_ds, grid_ds, lon_contour, lat_contour)
+
+    contour_length = np.nansum(grid_ds_contour['dx'].values)
+    return contour_length
+
 def _get_slope_estimate(grid_ds:xr.Dataset, transects_file='input/transects/cwa_transects.json', max_depth=100):
     transects = read_transects_in_lon_lat_range_from_json(transects_file, [114, 116], [-33, -31])
     lon = grid_ds.lon_rho.values
@@ -701,7 +710,7 @@ def plot_u_prime_evolution(ucross_ds:xr.Dataset, df_analysis:pd.DataFrame,
     
     fig = plt.figure(figsize=(8, 6))
     
-    ax2 = plt.subplot(5, 1, 1)
+    ax2 = plt.subplot(6, 1, 1)
     ax2.plot(ucross_ds.ocean_time.values, ubar50, '-k', linewidth=1.0)
     ax2.plot(xlim, [0, 0], '-k', linewidth=0.5)
     ax2.set_ylim([-0.06, 0.1])
@@ -713,7 +722,7 @@ def plot_u_prime_evolution(ucross_ds:xr.Dataset, df_analysis:pd.DataFrame,
     ax2.set_ylabel(r'$\bar{u}$ (m s$^{-1}$)')
     add_subtitle(ax2, '(a) Depth-mean cross-shelf velocity across 50 m')
     
-    ax1 = plt.subplot(5, 1, (2, 3))
+    ax1 = plt.subplot(6, 1, (2, 3))
     c = ax1.pcolormesh(ucross_ds.ocean_time.values, z_rho50, u_prime50.transpose(), cmap=cmap, vmin=vmin, vmax=vmax)
     plot_monthly_grid(ax1, 2017, color="#666666", alpha=1.0, linewidth=0.7)
     ax1.set_yticks([-50, -40, -30, -20, -10, 0])
@@ -723,7 +732,25 @@ def plot_u_prime_evolution(ucross_ds:xr.Dataset, df_analysis:pd.DataFrame,
     ax1.set_xlim(xlim)
     add_subtitle(ax1, "(b) Cross-shelf velocity variability u' across 50 m", alpha=0.5)
     
-    ax3 = plt.subplot(5, 1, (4, 5))
+    # wind arrows
+    wind_dir = df_analysis['wind_dir'].values
+    wind_vel = df_analysis['wind_vel'].values
+    wind_u = np.cos(np.deg2rad(wind_dir))
+    wind_v = np.sin(np.deg2rad(wind_dir))
+    time = np.array([pd.to_datetime(t) for t in df_analysis['time'].values])
+
+    ax0 = plt.subplot(6, 1, 4)
+    ax0.quiver(time, wind_vel, wind_u, wind_v, wind_vel, cmap='PuBu', angles='uv', scale=50, width=0.002)
+    ax0.plot(time, wind_vel, '-', color='#808080', linewidth=0.5)
+    ax0.set_ylim([0, 22])
+    plot_monthly_grid(ax0, 2017, alpha=0.7)
+    ax0.set_xlim(xlim)
+    ax0.set_xticklabels([])
+    ax0.set_yticks(np.arange(0, 20, 5))
+    ax0.set_ylabel('Wind speed\n(m s$^{-1}$)')
+    add_subtitle(ax0, '(c) Wind')
+    
+    ax3 = plt.subplot(6, 1, (5, 6))
     c = ax3.pcolormesh(ucross_ds.ocean_time.values, z_rho50, u50.transpose(), cmap=cmap, vmin=vmin, vmax=vmax)
     plot_monthly_grid(ax3, 2017, color="#666666", alpha=1.0, linewidth=0.7)
     ax3.set_yticks([-50, -40, -30, -20, -10, 0])
@@ -731,7 +758,7 @@ def plot_u_prime_evolution(ucross_ds:xr.Dataset, df_analysis:pd.DataFrame,
     ax3.set_xticks(center_times)
     ax3.set_xticklabels(center_times_str)
     ax3.set_xlim(xlim)
-    add_subtitle(ax3, '(c) Cross-shelf velocity u across 50 m', alpha=0.5)
+    add_subtitle(ax3, '(d) Cross-shelf velocity u across 50 m', alpha=0.5)
     
     ax3.plot(df_time, z_surface, '-k', linewidth=0.5)
     
@@ -1997,8 +2024,8 @@ def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, sho
         max_value = np.nanmax(values_flat)
         return mean_value, std_value, min_value, max_value
     
-    df = pd.DataFrame(data=np.empty((5, 5)), columns=['parameter', 'mean', 'std', 'min', 'max'])
-    df['parameter'] = ['events', 'duration', 'mean_vel', 'mean_thickness', 'mean_h']
+    df = pd.DataFrame(data=np.empty((7, 5)), columns=['parameter', 'mean', 'std', 'min', 'max'])
+    df['parameter'] = ['events', 'duration', 'mean_vel', 'mean_thickness', 'mean_h', 'mean_transport', 'mean_transport_50m']
     df.iloc[0, 1] = np.nanmean(dswt_events.n_events)
     df.iloc[0, 2] = np.nanstd(dswt_events.n_events)
     df.iloc[0, 3] = np.nanmin(dswt_events.n_events)
@@ -2007,6 +2034,16 @@ def plot_yearly_events(dswt_events:DswtEvents, years:list, output_path=None, sho
     df.iloc[2, 1], df.iloc[2, 2], df.iloc[2, 3], df.iloc[2, 4] = _get_overall_stats('mean_vel')
     df.iloc[3, 1], df.iloc[3, 2], df.iloc[3, 3], df.iloc[3, 4] = _get_overall_stats('mean_thickness')
     df.iloc[4, 1], df.iloc[4, 2], df.iloc[4, 3], df.iloc[4, 4] = _get_overall_stats('mean_h')
+    mean_t, std_t, min_t, max_t = _get_overall_stats('mean_transport')
+    df.iloc[5, 1] = mean_t/(24*60*60)
+    df.iloc[5, 2] = std_t/(24*60*60)
+    df.iloc[5, 3] = min_t/(24*60*60)
+    df.iloc[5, 4] = max_t/(24*60*60)
+    mean_t_50m, std_t_50m, min_t_50m, max_t_50m = _get_overall_stats('mean_transport_dc')
+    df.iloc[6, 1] = mean_t_50m/(24*60*60)
+    df.iloc[6, 2] = std_t_50m/(24*60*60)
+    df.iloc[6, 3] = min_t_50m/(24*60*60)
+    df.iloc[6, 4] = max_t_50m/(24*60*60)
     
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)

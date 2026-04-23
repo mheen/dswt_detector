@@ -29,7 +29,10 @@ class DswtEvent:
                  std_h:float,
                  max_transport:float,
                  mean_transport:float,
-                 std_transport:float):
+                 std_transport:float,
+                 max_transport_dc:float,
+                 mean_transport_dc:float,
+                 std_transport_dc:float):
         self.start_time = start_time
         self.end_time = end_time
         self.duration = duration
@@ -45,7 +48,10 @@ class DswtEvent:
         self.std_h = std_h
         self.max_transport = max_transport
         self.mean_transport = mean_transport
-        self.std_transport = std_transport
+        self.std_transport_dc = std_transport
+        self.max_transport_dc = max_transport_dc
+        self.mean_transport_dc = mean_transport_dc
+        self.std_transport_dc = std_transport_dc
       
 class DswtEvents:
     def __init__(self,
@@ -102,15 +108,19 @@ class DswtEvents:
                 max_h_event = np.nanmean(df_year['mean_h'][l_time_event].values)
                 mean_h_event = np.nanmax(df_year['mean_h'][l_time_event].values)
                 std_h_event = np.nanstd(df_year['mean_h'][l_time_event].values)
-                max_transport_event = np.nanmax(df_year[f'transport_{depth_contour}m'][l_time_event].values)
-                mean_transport_event = np.nanmean(df_year[f'transport_{depth_contour}m'][l_time_event].values)
-                std_transport_event = np.nanstd(df_year[f'transport_{depth_contour}m'][l_time_event].values)
+                max_transport_event = np.nanmax(df_year[f'transport'][l_time_event].values)
+                mean_transport_event = np.nanmean(df_year[f'transport'][l_time_event].values)
+                std_transport_event = np.nanstd(df_year[f'transport'][l_time_event].values)
+                max_transport_event_50m = np.nanmax(df_year[f'transport_{depth_contour}m'][l_time_event].values)
+                mean_transport_event_50m = np.nanmean(df_year[f'transport_{depth_contour}m'][l_time_event].values)
+                std_transport_event_50m = np.nanstd(df_year[f'transport_{depth_contour}m'][l_time_event].values)
                 
                 yearly_events.append(DswtEvent(start_event, end_event, duration_event, mean_f,
                                                max_vel_event, mean_vel_event, std_vel_event,
                                                max_thickness_event, mean_thickness_event, std_thickness_event,
                                                max_h_event, mean_h_event, std_h_event,
-                                               max_transport_event, mean_transport_event, std_transport_event))
+                                               max_transport_event, mean_transport_event, std_transport_event,
+                                               max_transport_event_50m, mean_transport_event_50m, std_transport_event_50m))
                 
             time.append(datetime(years[i], 7, 17))
             n_events.append(n)
