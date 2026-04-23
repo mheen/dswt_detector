@@ -1061,7 +1061,7 @@ def plot_overall_transport_map_with_monthly_climatology(df_timeseries:pd.DataFra
     ax2 = plt.subplot(2, 3, (4, 5))
     plot_monthly_histogram(time_m, bflux_m*10**5, yerr=bflux_std*10**5,
                            c_change=0, color=[color_neg, color_pos], err_color=[color_neg_std, color_pos_std],
-                           time_is_center=True, ylabel='Buoyancy flux\n(10$^{-5}$ kg s$^{-1}$ m$^{-2}$)',
+                           time_is_center=True, ylabel='Surface buoyancy flux\n(10$^{-5}$ kg s$^{-1}$ m$^{-2}$)',
                            ylim=[-2.0, 2.0], ax=ax2, show=False)
     ax2.plot(xlim, [0, 0], '-k')
     ax2.set_xlim(xlim)
@@ -1154,11 +1154,11 @@ def plot_dswt_forcing(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, grid_ds:xr
     ax1.pcolormesh(bhflux_bins, drhodx_bins, density1.transpose() / n_samples, cmap='turbo', vmin=vmin, vmax=vmax)
     
     ax1.plot([0,0], [-2, 0], '-k', linewidth=0.7)
-    ax1.set_xlabel('Buoyancy flux (10$^{-5}$ kg m$^{-2}$ s$^{-1}$)')
+    ax1.set_xlabel('Surface buoyancy flux (10$^{-5}$ kg m$^{-2}$ s$^{-1}$)')
     ax1.set_ylabel(r'$\frac{\partial\rho}{\partial x}$ (10$^{-5}$ kg m$^{-3}$ m$^{-1}$)')
     ax1.set_xlim([-4, 2])
     ax1.set_ylim([-2, 0.0])
-    add_subtitle(ax1, r'(a) Buoyancy vs $\frac{\partial\rho}{\partial x}$')
+    add_subtitle(ax1, r'(a) Surface buoyancy vs $\frac{\partial\rho}{\partial x}$')
     r1, p1 = stats.pearsonr(bhflux, drhodx)
     t1 = ax1.text(-4, -0.25, f'  $R$={np.round(r1, 2)}, $p$<0.05', va='top')#, path_effects=[pe.withStroke(linewidth=2, foreground="w")])
     t1.set_bbox(dict(facecolor='w', alpha=0.8, edgecolor='none'))
