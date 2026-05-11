@@ -120,6 +120,23 @@ def get_monthly_means(time:np.ndarray, values:np.ndarray, time_axis=0) -> tuple:
 
     return np.array(monthly_time), np.array(monthly_values), np.array(monthly_stds)
 
+def get_monthly_climatology_non_normal_distribution(time:np.ndarray, values:np.ndarray) -> tuple:
+    values_climatology = []
+    values_25q = []
+    values_75q = []
+    
+    for m in range(1, 13):
+        l_month = [t.month == m for t in time]
+        values_climatology.append(np.nanmedian(values[l_month]))
+        values_25q.append(np.nanpercentile(values[l_month], 25))
+        values_75q.append(np.nanpercentile(values[l_month], 75))
+        
+    values_climatology = np.array(values_climatology)
+    values_25q = np.array(values_25q)
+    values_75q = np.array(values_75q)
+    
+    return values_climatology, values_25q, values_75q
+
 def get_monthly_climatology(time:np.ndarray, values:np.ndarray) -> tuple:
     values_climatology = []
     std_climatology = []
