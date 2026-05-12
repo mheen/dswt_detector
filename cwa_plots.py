@@ -1294,13 +1294,13 @@ def plot_dswt_per_wind_dir(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, outpu
     
     ax1 = plt.subplot(2, 2, 1)
     _ = _plot_per_wind_dir(ax1, l_southerly)
-    add_subtitle(ax1, '(a) Upwelling favorable (southerly)')
+    add_subtitle(ax1, '(a) Upwelling favorable')
     ax1.set_xticklabels([])
     ax1.set_xlabel('')
     
     ax2 = plt.subplot(2, 2, 2)
     _ = _plot_per_wind_dir(ax2, l_northerly)
-    add_subtitle(ax2, '(b) Downwelling favorable (northerly)')
+    add_subtitle(ax2, '(b) Downwelling favorable')
     ax2.set_xticklabels([])
     ax2.set_xlabel('')
     ax2.set_yticklabels([])
@@ -1308,11 +1308,11 @@ def plot_dswt_per_wind_dir(df_dswt:pd.DataFrame, df_analysis:pd.DataFrame, outpu
     
     ax3 = plt.subplot(2, 2, 3)
     _ = _plot_per_wind_dir(ax3, l_onshore)
-    add_subtitle(ax3, '(c) Onshore (westerly)')
+    add_subtitle(ax3, '(c) Onshore')
     
     ax4 = plt.subplot(2, 2, 4)
     c = _plot_per_wind_dir(ax4, l_offshore)
-    add_subtitle(ax4, '(d) Offshore (easterly)')
+    add_subtitle(ax4, '(d) Offshore')
     ax4.set_yticklabels([])
     ax4.set_ylabel('')
     
@@ -1922,6 +1922,16 @@ def plot_interannual_dswt(df_timeseries:pd.DataFrame, df_analysis:pd.DataFrame, 
     if output_path is not None:
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
         
+        transport_anomaly_max = []
+        for year in years:
+            l_year = np.array([t.year for t in time_m]) == year
+            transport_anomaly_y = transport_anomaly_m[l_year] / (24*60*60)
+            transport_anomaly_max.append(np.nanmax(abs(transport_anomaly_y)))
+            
+        df = pd.DataFrame(data=np.array([years, transport_anomaly_max]).transpose(),
+                          columns=['time', 'max transport anomaly (m2/s)'])
+        df.to_csv(f'{os.path.splitext(output_path)[0]}.csv', index=False)
+        
     if show == True:
         plt.show()
     else:
@@ -2157,6 +2167,103 @@ def dswt_animation(df_transport:pd.DataFrame,
         anim.save(output_path, writer=writer)
     else:
         plt.show()
+
+def plot_transport_velocity_thickness_maps(df_transport:pd.DataFrame, output_path=None, show=False):
+    
+    # DSWT map data
+    time_ds = np.array([pd.to_datetime(d) for d in df_transport['time'].values])
+    l_months = get_l_months(time_ds, [5, 6, 7])
+    transport_overall = get_transport_map(df_transport, l_months, grid_ds.lon_rho.shape)
+    thickness = get_transport_map(df_transport, l_months, grid_ds.lon_rho.shape, variable='mean_thickness')
+    vel = get_transport_map(df_transport, l_months, grid_ds.lon_rho.shape, variable='mean_vel')
+    
+    l_mask = grid_ds.h.values > 100.
+    transport_overall[l_mask] = np.nan
+    transport_overall[transport_overall == 0] = np.nan
+    
+    # --- figure ---
+    fig = plt.figure(figsize=(8, 5))
+    
+    # velocity map
+    ax1 = plt.subplot(1, 3, 1, projection=ccrs.PlateCarree())
+    
+    plot_basic_map(ax1, lon_range_default, lat_range_default,
+                   meridians_default, parallels_default, full_resolution=False)
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                  lon_range_default, lat_range_default,
+                  ax=ax1, show=False, color='w',
+                  clevels=[25, 50, 100, 200],
+                  linewidths=[2.0, 4.0, 2.0, 2.0])
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                  lon_range_default, lat_range_default,
+                  ax=ax1, show=False,
+                  clevels=[25, 50, 100, 200],
+                  linewidths=[1.0, 2.0, 1.0, 1.0])
+    
+    c1 = ax1.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, vel, cmap='viridis', vmin=0, vmax=0.08)
+    add_subtitle(ax1, '(a) Mean DSWT velocity')
+    
+    # thickness map
+    ax2 = plt.subplot(1, 3, 2, projection=ccrs.PlateCarree())
+    
+    plot_basic_map(ax2, lon_range_default, lat_range_default,
+                   meridians_default, parallels_default, full_resolution=False)
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                  lon_range_default, lat_range_default,
+                  ax=ax2, show=False, color='w',
+                  clevels=[25, 50, 100, 200],
+                  linewidths=[2.0, 4.0, 2.0, 2.0])
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                  lon_range_default, lat_range_default,
+                  ax=ax2, show=False,
+                  clevels=[25, 50, 100, 200],
+                  linewidths=[1.0, 2.0, 1.0, 1.0])
+    
+    c2 = ax2.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, thickness, cmap='viridis', vmin=0, vmax=10)
+    add_subtitle(ax2, '(b) Mean DSWT thickness')
+    
+    # transport map
+    ax3 = plt.subplot(1, 3, 3, projection=ccrs.PlateCarree())
+    
+    plot_basic_map(ax3, lon_range_default, lat_range_default,
+                   meridians_default, parallels_default, full_resolution=False)
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                  lon_range_default, lat_range_default,
+                  ax=ax3, show=False, color='w',
+                  clevels=[25, 50, 100, 200],
+                  linewidths=[2.0, 4.0, 2.0, 2.0])
+    plot_contours(grid_ds.lon_rho.values, grid_ds.lat_rho.values, grid_ds.h.values,
+                  lon_range_default, lat_range_default,
+                  ax=ax3, show=False,
+                  clevels=[25, 50, 100, 200],
+                  linewidths=[1.0, 2.0, 1.0, 1.0])
+    
+    c3 = ax3.pcolormesh(grid_ds.lon_rho.values, grid_ds.lat_rho.values, transport_overall/(24*60*60), cmap='viridis', vmin=0, vmax=0.15)
+    add_subtitle(ax3, '(c) Mean DSWT transport')
+    
+    # colorbars
+    l1, b1, w1, h1 = ax1.get_position().bounds
+    cax1 = fig.add_axes([l1, b1-0.04, w1, 0.02])
+    cbar1 = plt.colorbar(c1, cax=cax1, orientation='horizontal')
+    cbar1.set_label('Velocity (m s$^{-1}$)')
+    
+    l2, b2, w2, h2 = ax2.get_position().bounds
+    cax2 = fig.add_axes([l2, b2-0.04, w2, 0.02])
+    cbar2 = plt.colorbar(c2, cax=cax2, orientation='horizontal')
+    cbar2.set_label('Thickness (m)')
+    
+    l3, b3, w3, h3 = ax3.get_position().bounds
+    cax3 = fig.add_axes([l3, b3-0.04, w3, 0.02])
+    cbar3 = plt.colorbar(c3, cax=cax3, orientation='horizontal')
+    cbar3.set_label('Transport (m$^2$ s$^{-1}$)')
+    
+    # save and show figure
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+    if show == True:
+        plt.show()
+    else:
+        plt.close()
 
 # --- Temporary / still to clean ---
 
@@ -2579,6 +2686,7 @@ if __name__ == '__main__':
     # SI
     # ---------------------------------------------------
     # plot_yearly_events(dswt_events, years, output_path=f'{plot_dir}dswt_event_statistics.jpg')
+    # plot_transport_velocity_thickness_maps(df_transport, output_path=f'{plot_dir}dswt_transport_thickness_vel_maps.jpg')
     
     # ---------------------------------------------------
     # Temp
