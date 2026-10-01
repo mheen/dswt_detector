@@ -35,6 +35,12 @@ def read_df_from_multiple_csvs(input_dir:str, years:list, file_preface:str) -> p
         
     return df
 
+def read_df_from_multiple_csvs_for_specific_transects_only(input_dir:str, years:list, transects:list, file_preface:str):
+    df_all = read_df_from_multiple_csvs(input_dir, years, file_preface)
+    l_transect = np.array([d in transects for d in df_all['transect']])
+    df = df_all.loc[l_transect]
+    return df
+
 def get_domain_str(lon_range:list, lat_range:list) -> str:
     lon_range_str = f'{int(np.floor(lon_range[0]))}-{int(np.ceil(lon_range[1]))}'
     lon_range_unit = 'E' if lon_range[0] > 0 else 'W'
