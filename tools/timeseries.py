@@ -37,6 +37,19 @@ def get_closest_time_index(time_array:np.ndarray, time:datetime) -> int:
     i_closest = np.where(dt == dt.min())[0][0]
     return i_closest
 
+def get_closest_time_index_array(time_org:np.ndarray, time_p:np.ndarray) -> np.ndarray[int]:
+    sorter = np.argsort(time_org)
+    sorted_time_org = time_org[sorter]
+
+    pos = np.searchsorted(sorted_time_org, time_p, side='right')
+    pos = np.clip(pos, 1, len(sorted_time_org) - 1)
+
+    left_diff = np.abs(time_p - sorted_time_org[pos -1])
+    right_diff = np.abs(time_p - sorted_time_org[pos])
+    nearest = np.where(left_diff <= right_diff, pos -1 , pos)
+
+    return sorter[nearest]
+
 def get_l_time_range(time:np.ndarray, start_time:datetime, end_time:datetime) -> np.ndarray:
     if type(start_time) is datetime.date:
         start_time = datetime.datetime(start_time.year,start_time.month,start_time.day)
