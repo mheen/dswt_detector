@@ -377,7 +377,8 @@ def plot_glider_model_comparisons(input_files, start_dates, end_dates, output_pa
 def plot_glider_model_direct_comparisons(output_path='plots/cwa/glider_cwa_direct_comparisons.jpg', show=False):
     glider_roms_df = pd.read_csv('plots/cwa/cwa_glider_roms_comparison.csv')
     
-    fig = plt.figure(figsize=(11, 3))
+    fig = plt.figure(figsize=(13, 3))
+    plt.subplots_adjust(wspace=0.3)
     
     # --- Direct comparisons
     n_samples = len(glider_roms_df)
